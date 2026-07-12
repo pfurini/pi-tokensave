@@ -1,0 +1,4 @@
+node_modules/
+.tokensave/
+*.log
+.pi/readcache/

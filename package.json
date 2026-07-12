@@ -1,0 +1,47 @@
+{
+  "name": "pi-tokensave",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Native Pi extension that makes the agent call the local TokenSave CLI for code intelligence before falling back to grep/find/manual exploration. No MCP.",
+  "main": "src/index.ts",
+  "license": "MIT",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "tokensave",
+    "code-intelligence"
+  ],
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "pi": {
+    "extensions": [
+      "src/index.ts"
+    ]
+  },
+  "scripts": {
+    "check": "node --experimental-strip-types -e \"import('./src/index.ts').catch((err) => { console.error(err); process.exit(1); })\"",
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dan-developer/pi-tokensave.git"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-ai": "*",
+    "typebox": "*"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.80.6",
+    "@earendil-works/pi-ai": "*",
+    "typebox": "*"
+  }
+}
