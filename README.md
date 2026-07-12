@@ -3,9 +3,7 @@
 Native [Pi](https://pi.dev) extension that makes the agent use [TokenSave](https://github.com/dan-developer/pi-tokensave) code
 intelligence *before* falling back to `grep`, `find`, or speculative file reads.
 
-**This plugin does not use MCP.** It calls the local `tokensave` CLI directly via
-`tokensave tool <name> --project <root> --args <json> --json`. It never runs `tokensave serve`,
-never touches `.tokensave/tokensave.db` directly, and never writes `mcp.json`.
+pi-tokensave registers native Pi tools and invokes the local TokenSave CLI directly.
 
 ## Requirements
 
@@ -70,7 +68,7 @@ is stated in every tool's guidelines and in the injected instructions.
 /tokensave-mode enforce    Switch to enforce mode (default)
 /tokensave-rules-install   Install/update the AGENTS.md instructions block
 /tokensave-rules-remove    Remove only the pi-tokensave block from AGENTS.md
-/tokensave-doctor          Diagnose binary, init, rules block, mode, and any leftover MCP integration
+/tokensave-doctor          Diagnose binary, init, rules block, and mode
 ```
 
 Mode is persisted to `~/.pi/agent/pi-tokensave.json` (never inside the project).
@@ -118,22 +116,3 @@ Remove the instructions block separately if desired:
 - **Guard blocks a search you believe is legitimate** — switch to `prefer` mode
   (`/tokensave-mode prefer`), or run the underlying TokenSave query first
   (`tokensave_find_symbol`) so the fallback becomes allowed automatically.
-- **`tokensave doctor` shows a Pi MCP integration** — `/tokensave-doctor` reads
-  Pi's own `mcp.json` (`$PI_CODING_AGENT_DIR/mcp.json`, else `~/.pi/agent/mcp.json`)
-  and reports whether a TokenSave MCP server is registered, i.e. whether
-  `mcpServers.tokensave` is present:
-
-  ```json
-  {
-    "mcpServers": {
-      "tokensave": {}
-    }
-  }
-  ```
-
-  It parses `mcp.json` directly instead of scraping human-readable
-  `tokensave doctor` output, and it **never modifies the file automatically**.
-  It does not affect pi-tokensave, which never uses MCP. To remove only the Pi
-  integration, run `tokensave uninstall --agent pi`. **Never run bare
-  `tokensave uninstall`** — without `--agent` it removes every agent's TokenSave
-  integration, not just Pi's.

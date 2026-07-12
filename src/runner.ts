@@ -3,7 +3,7 @@
  *
  * Always shells out to `tokensave tool <name> --project <root> --args <json> --json`
  * using execFile (array args, no shell). Never touches the .tokensave database
- * directly and never starts `tokensave serve`.
+ * directly.
  */
 
 import { execFile } from "node:child_process";

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerTokensaveCommands } from "../src/commands.ts";
@@ -140,11 +140,10 @@ test("tokensave-doctor reports mode and rules-block presence", async () => {
 
   const agentsPath = join(mkdtempSync(join(tmpdir(), "pi-tokensave-agents-")), "AGENTS.md");
   installRulesBlock(agentsPath); // isolated tmp file, never touches the real ~/.pi/agent/AGENTS.md
-  const mcpPath = join(mkdtempSync(join(tmpdir(), "pi-tokensave-mcp-")), "mcp.json");
 
   const pi = fakePi();
   const state = { mode: "prefer" as TokensaveMode };
-  registerTokensaveCommands(pi, () => state, (m) => (state.mode = m), undefined, agentsPath, mcpPath);
+  registerTokensaveCommands(pi, () => state, (m) => (state.mode = m), undefined, agentsPath);
 
   const ctx = fakeCtx(mkdtempSync(join(tmpdir(), "pi-tokensave-cmd-")));
   await pi.commands["tokensave-doctor"].handler("", ctx);
@@ -152,114 +151,4 @@ test("tokensave-doctor reports mode and rules-block presence", async () => {
   const report = ctx.notifications[0]?.message ?? "";
   assert.ok(report.includes("Mode: prefer"));
   assert.ok(report.includes("AGENTS.md rules block present"));
-});
-
-test("tokensave-doctor does not flag MCP integration when mcp.json is missing", async () => {
-  setExecFileImplForTest((_f, _args: string[], _o, cb: Cb) => {
-    cb(null, "tokensave 7.0.3", "");
-    return {};
-  });
-
-  const mcpPath = join(mkdtempSync(join(tmpdir(), "pi-tokensave-mcp-")), "mcp.json");
-
-  const pi = fakePi();
-  const state = { mode: "enforce" as TokensaveMode };
-  registerTokensaveCommands(pi, () => state, (m) => (state.mode = m), undefined, undefined, mcpPath);
-
-  const ctx = fakeCtx(mkdtempSync(join(tmpdir(), "pi-tokensave-cmd-")));
-  await pi.commands["tokensave-doctor"].handler("", ctx);
-
-  const report = ctx.notifications[0]?.message ?? "";
-  assert.ok(!/uninstall/i.test(report));
-});
-
-test("tokensave-doctor does not flag MCP integration for malformed JSON", async () => {
-  setExecFileImplForTest((_f, _args: string[], _o, cb: Cb) => {
-    cb(null, "tokensave 7.0.3", "");
-    return {};
-  });
-
-  const mcpDir = mkdtempSync(join(tmpdir(), "pi-tokensave-mcp-"));
-  const mcpPath = join(mcpDir, "mcp.json");
-  writeFileSync(mcpPath, "{ not valid json", "utf8");
-
-  const pi = fakePi();
-  const state = { mode: "enforce" as TokensaveMode };
-  registerTokensaveCommands(pi, () => state, (m) => (state.mode = m), undefined, undefined, mcpPath);
-
-  const ctx = fakeCtx(mkdtempSync(join(tmpdir(), "pi-tokensave-cmd-")));
-  await pi.commands["tokensave-doctor"].handler("", ctx);
-
-  const report = ctx.notifications[0]?.message ?? "";
-  assert.ok(!/uninstall/i.test(report));
-});
-
-test("tokensave-doctor does not flag MCP integration for an unrelated MCP server entry", async () => {
-  setExecFileImplForTest((_f, _args: string[], _o, cb: Cb) => {
-    cb(null, "tokensave 7.0.3", "");
-    return {};
-  });
-
-  const mcpDir = mkdtempSync(join(tmpdir(), "pi-tokensave-mcp-"));
-  const mcpPath = join(mcpDir, "mcp.json");
-  writeFileSync(mcpPath, JSON.stringify({ mcpServers: { gitmcp: { command: "gitmcp" } } }), "utf8");
-
-  const pi = fakePi();
-  const state = { mode: "enforce" as TokensaveMode };
-  registerTokensaveCommands(pi, () => state, (m) => (state.mode = m), undefined, undefined, mcpPath);
-
-  const ctx = fakeCtx(mkdtempSync(join(tmpdir(), "pi-tokensave-cmd-")));
-  await pi.commands["tokensave-doctor"].handler("", ctx);
-
-  const report = ctx.notifications[0]?.message ?? "";
-  assert.ok(!/uninstall/i.test(report));
-});
-
-test("tokensave-doctor recommends 'tokensave uninstall --agent pi' (never bare uninstall) when a TokenSave MCP server is registered", async () => {
-  setExecFileImplForTest((_f, _args: string[], _o, cb: Cb) => {
-    cb(null, "tokensave 7.0.3", "");
-    return {};
-  });
-
-  const mcpDir = mkdtempSync(join(tmpdir(), "pi-tokensave-mcp-"));
-  const mcpPath = join(mcpDir, "mcp.json");
-  writeFileSync(mcpPath, JSON.stringify({ mcpServers: { tokensave: { command: "tokensave", args: ["serve"] } } }), "utf8");
-
-  const pi = fakePi();
-  const state = { mode: "enforce" as TokensaveMode };
-  registerTokensaveCommands(pi, () => state, (m) => (state.mode = m), undefined, undefined, mcpPath);
-
-  const ctx = fakeCtx(mkdtempSync(join(tmpdir(), "pi-tokensave-cmd-")));
-  await pi.commands["tokensave-doctor"].handler("", ctx);
-
-  const report = ctx.notifications[0]?.message ?? "";
-  assert.ok(report.includes("tokensave uninstall --agent pi"));
-  assert.ok(!/run:\s*tokensave uninstall(?! --agent)/i.test(report));
-});
-
-test("tokensave-doctor honors PI_CODING_AGENT_DIR to locate mcp.json", async () => {
-  setExecFileImplForTest((_f, _args: string[], _o, cb: Cb) => {
-    cb(null, "tokensave 7.0.3", "");
-    return {};
-  });
-
-  const agentDir = mkdtempSync(join(tmpdir(), "pi-tokensave-agentdir-"));
-  writeFileSync(join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: { tokensave: {} } }), "utf8");
-
-  const previous = process.env.PI_CODING_AGENT_DIR;
-  process.env.PI_CODING_AGENT_DIR = agentDir;
-  try {
-    const pi = fakePi();
-    const state = { mode: "enforce" as TokensaveMode };
-    registerTokensaveCommands(pi, () => state, (m) => (state.mode = m));
-
-    const ctx = fakeCtx(mkdtempSync(join(tmpdir(), "pi-tokensave-cmd-")));
-    await pi.commands["tokensave-doctor"].handler("", ctx);
-
-    const report = ctx.notifications[0]?.message ?? "";
-    assert.ok(report.includes("tokensave uninstall --agent pi"));
-  } finally {
-    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = previous;
-  }
 });

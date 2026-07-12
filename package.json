@@ -2,7 +2,7 @@
   "name": "pi-tokensave",
   "version": "0.1.0",
   "type": "module",
-  "description": "Native Pi extension that makes the agent call the local TokenSave CLI for code intelligence before falling back to grep/find/manual exploration. No MCP.",
+  "description": "Native Pi extension that makes the agent call the local TokenSave CLI for code intelligence before falling back to grep/find/manual exploration.",
   "main": "src/index.ts",
   "license": "MIT",
   "keywords": [

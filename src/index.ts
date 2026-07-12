@@ -2,8 +2,8 @@
  * pi-tokensave: native Pi extension that makes the agent use the local
  * TokenSave CLI for code intelligence before grep/find/manual exploration.
  *
- * No MCP. No `tokensave serve`. No direct database access. Read-only tools
- * only — code changes still go through Pi's normal edit/write tools.
+ * Read-only tools only — code changes still go through Pi's normal edit/write
+ * tools.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";

@@ -3,7 +3,6 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { isProjectInitialized, resolveProjectRoot, resolveTokensaveBinary } from "./project.ts";
@@ -54,42 +53,10 @@ async function handleSync(ctx: ExtensionCommandContext): Promise<void> {
   ctx.ui.notify(result.stdout || result.stderr || "No output.", result.ok ? "info" : "error");
 }
 
-/**
- * Resolves Pi's own MCP config file path: `$PI_CODING_AGENT_DIR/mcp.json`
- * when that environment variable is set, otherwise `~/.pi/agent/mcp.json`.
- */
-export function piMcpConfigPath(): string {
-  const dir = process.env.PI_CODING_AGENT_DIR?.trim();
-  return dir ? join(dir, "mcp.json") : join(homedir(), ".pi", "agent", "mcp.json");
-}
-
-/**
- * Detects an actual TokenSave MCP server registration by reading Pi's own
- * mcp.json directly, rather than pattern-matching `tokensave doctor`'s
- * human-readable output (which places "Pi integration" and "MCP server
- * registered" on different lines, so a same-line regex over that text
- * false-negatives). The file is only ever read here, never modified.
- */
-function hasTokensaveMcpIntegration(path: string = piMcpConfigPath()): boolean {
-  if (!existsSync(path)) return false;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(readFileSync(path, "utf8"));
-  } catch {
-    return false;
-  }
-  if (typeof parsed !== "object" || parsed === null) return false;
-  const mcpServers = (parsed as { mcpServers?: unknown }).mcpServers;
-  if (typeof mcpServers !== "object" || mcpServers === null) return false;
-  const tokensaveEntry = (mcpServers as Record<string, unknown>).tokensave;
-  return typeof tokensaveEntry === "object" && tokensaveEntry !== null;
-}
-
 async function handleDoctor(
   ctx: ExtensionCommandContext,
   getState: GetState,
   agentsPathOverride?: string,
-  mcpPathOverride?: string,
 ): Promise<void> {
   const root = resolveProjectRoot(ctx.cwd);
   const lines: string[] = [];
@@ -107,16 +74,6 @@ async function handleDoctor(
 
   lines.push(`Mode: ${getState().mode}`);
 
-  if (hasTokensaveMcpIntegration(mcpPathOverride)) {
-    lines.push(
-      "",
-      "Note: a TokenSave MCP server is registered in Pi's mcp.json.",
-      "pi-tokensave does not use MCP and works independently of it.",
-      "To remove only the Pi MCP integration, run: tokensave uninstall --agent pi",
-      "(Do not run 'tokensave uninstall' without --agent; that removes every agent integration.)",
-    );
-  }
-
   ctx.ui.notify(lines.join("\n"), "info");
 }
 
@@ -126,7 +83,6 @@ export function registerTokensaveCommands(
   setMode: SetMode,
   modePathOverride?: string,
   agentsPathOverride?: string,
-  mcpPathOverride?: string,
 ): void {
   pi.registerCommand("tokensave-status", {
     description: "Show TokenSave binary, project init, and graph status",
@@ -189,7 +145,7 @@ export function registerTokensaveCommands(
   });
 
   pi.registerCommand("tokensave-doctor", {
-    description: "Diagnose TokenSave binary, project init, rules block, mode, and accidental MCP integration",
-    handler: async (_args, ctx) => handleDoctor(ctx, getState, agentsPathOverride, mcpPathOverride),
+    description: "Diagnose TokenSave binary, project init, rules block, and mode",
+    handler: async (_args, ctx) => handleDoctor(ctx, getState, agentsPathOverride),
   });
 }
