@@ -249,6 +249,25 @@ test("checkTokensaveAvailability never treats a crash or non-zero exit as availa
   assert.equal(result.available, false);
 });
 
+test("checkTokensaveAvailability shares one process across concurrent callers", async () => {
+  let processCount = 0;
+  let finish: Cb | undefined;
+  setExecFileImplForTest((_file, _args, _options, cb: Cb) => {
+    processCount += 1;
+    finish = cb;
+    return {};
+  });
+
+  const first = checkTokensaveAvailability();
+  const second = checkTokensaveAvailability();
+  assert.equal(processCount, 1);
+
+  finish?.(null, "tokensave 7.0.0", "");
+  const results = await Promise.all([first, second]);
+  assert.deepEqual(results, [{ available: true }, { available: true }]);
+  assert.equal(processCount, 1);
+});
+
 // ---------------------------------------------------------------------------
 // runTokensaveCommand output bounding
 // ---------------------------------------------------------------------------

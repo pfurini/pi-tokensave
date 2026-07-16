@@ -90,14 +90,14 @@ function guardCheckNotInitialized(ctx: ExtensionContext) {
 const statusParams = Type.Object({});
 
 async function executeStatus(_toolCallId: string, _params: unknown, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
+  const root = projectRoot(ctx);
+  if (!isProjectInitialized(root)) {
+    return { content: [{ type: "text" as const, text: NOT_INITIALIZED_TEXT }], details: { initialized: false } };
+  }
+
   const available = await checkTokensaveAvailable();
   if (!available) {
     return { content: [{ type: "text" as const, text: binaryMissingText() }], details: { binaryAvailable: false } };
-  }
-
-  const root = projectRoot(ctx);
-  if (!isProjectInitialized(root)) {
-    return { content: [{ type: "text" as const, text: NOT_INITIALIZED_TEXT }], details: { binaryAvailable: true, initialized: false } };
   }
 
   const result = await runTokensaveTool("status", {}, { projectRoot: root, signal });

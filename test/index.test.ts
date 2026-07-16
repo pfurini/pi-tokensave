@@ -35,18 +35,25 @@ function fakePi() {
   } as unknown as ExtensionAPI & { handlers: Record<string, Handler> };
 }
 
-function baseSystemPromptOptions(contextFiles: Array<{ path: string; content: string }> = []) {
-  return { cwd: "/tmp", contextFiles };
+function baseSystemPromptOptions(cwd: string, contextFiles: Array<{ path: string; content: string }> = []) {
+  return { cwd, contextFiles };
+}
+
+function initializedProjectDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), "pi-tokensave-index-"));
+  mkdirSync(join(dir, ".tokensave"));
+  return dir;
 }
 
 test("before_agent_start injects the rules block when absent from loaded context files, on every call", async () => {
   const pi = fakePi();
   pluginTokensave(pi);
+  const projectDir = initializedProjectDir();
 
   const event1 = {
     prompt: "hello",
     systemPrompt: "base prompt",
-    systemPromptOptions: baseSystemPromptOptions([{ path: "/AGENTS.md", content: "unrelated instructions" }]),
+    systemPromptOptions: baseSystemPromptOptions(projectDir, [{ path: "/AGENTS.md", content: "unrelated instructions" }]),
   };
   const result1 = await pi.handlers.before_agent_start(event1, {});
   assert.ok(result1?.systemPrompt.includes("pi-tokensave:start"));
@@ -54,7 +61,7 @@ test("before_agent_start injects the rules block when absent from loaded context
   const event2 = {
     prompt: "hello again",
     systemPrompt: "base prompt",
-    systemPromptOptions: baseSystemPromptOptions([{ path: "/AGENTS.md", content: "unrelated instructions" }]),
+    systemPromptOptions: baseSystemPromptOptions(projectDir, [{ path: "/AGENTS.md", content: "unrelated instructions" }]),
   };
   const result2 = await pi.handlers.before_agent_start(event2, {});
   assert.ok(result2?.systemPrompt.includes("pi-tokensave:start"));
@@ -63,17 +70,52 @@ test("before_agent_start injects the rules block when absent from loaded context
 test("before_agent_start does not duplicate injection once a loaded context file already contains the block", async () => {
   const pi = fakePi();
   pluginTokensave(pi);
+  const projectDir = initializedProjectDir();
 
   const event = {
     prompt: "hello",
     systemPrompt: "base prompt",
-    systemPromptOptions: baseSystemPromptOptions([
+    systemPromptOptions: baseSystemPromptOptions(projectDir, [
       { path: "/AGENTS.md", content: "some text\n<!-- pi-tokensave:start -->\nalready loaded\n<!-- pi-tokensave:end -->\n" },
     ]),
   };
 
   const result = await pi.handlers.before_agent_start(event, {});
   assert.equal(result, undefined);
+});
+
+test("before_agent_start skips rule injection outside TokenSave projects", async () => {
+  const pi = fakePi();
+  pluginTokensave(pi);
+  const projectDir = mkdtempSync(join(tmpdir(), "pi-tokensave-index-"));
+  const event = {
+    prompt: "hello",
+    systemPrompt: "base prompt",
+    systemPromptOptions: baseSystemPromptOptions(projectDir),
+  };
+
+  const result = await pi.handlers.before_agent_start(event, {});
+  assert.equal(result, undefined);
+});
+
+test("guarded tool calls do not probe the TokenSave binary outside initialized projects", async () => {
+  const pi = fakePi();
+  pluginTokensave(pi);
+  let processCount = 0;
+  setExecFileImplForTest((_file, _args: string[], _options, cb: Cb) => {
+    processCount += 1;
+    cb(null, "tokensave 7.0.0", "");
+    return {};
+  });
+
+  const projectDir = mkdtempSync(join(tmpdir(), "pi-tokensave-index-"));
+  const result = await pi.handlers.tool_call(
+    { toolName: "bash", input: { command: 'rg "WellModel" .' } },
+    { cwd: projectDir, ui: { notify: () => {} } },
+  );
+
+  assert.equal(result, undefined);
+  assert.equal(processCount, 0);
 });
 
 test.afterEach(() => setExecFileImplForTest(undefined));

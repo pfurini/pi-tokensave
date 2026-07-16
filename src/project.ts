@@ -19,8 +19,9 @@ const MAX_ANCESTOR_HOPS = 50;
  * `.tokensave` lives at `/project`).
  *
  * If no `.tokensave` is found before (and including) the Git boundary, the
- * original `cwd` is returned unchanged so downstream "not initialized"
- * messaging stays accurate for the directory the user is actually in.
+ * Git repository root is returned. If no Git boundary exists, the original
+ * `cwd` is returned unchanged. Downstream initialization checks remain the
+ * authority for whether TokenSave applies.
  */
 export function resolveProjectRoot(cwd: string): string {
   let dir = cwd;

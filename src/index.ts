@@ -22,7 +22,8 @@ export default function pluginTokensave(pi: ExtensionAPI): void {
 
   pi.on("session_start", async (_event, _ctx) => {
     state = createSessionState(loadPersistedMode());
-    // Idempotent: safe to run on every session start, only writes on change.
+    // The global block is conditional on .tokensave presence, so it is safe to
+    // refresh for every session even though AGENTS.md is shared by all projects.
     installRulesBlock();
   });
 
@@ -39,6 +40,9 @@ export default function pluginTokensave(pi: ExtensionAPI): void {
     if (!GUARDED_TOOLS.has(event.toolName as GuardableToolName)) return;
     const toolName = event.toolName as GuardableToolName;
 
+    const root = resolveProjectRoot(ctx.cwd);
+    if (!isProjectInitialized(root)) return;
+
     if (state.binaryAvailable === undefined) {
       state.binaryAvailable = await checkTokensaveAvailable();
     }
@@ -48,15 +52,12 @@ export default function pluginTokensave(pi: ExtensionAPI): void {
       return;
     }
 
-    const root = resolveProjectRoot(ctx.cwd);
-    const projectInitialized = isProjectInitialized(root);
-
     const decision = evaluateGuard({
       toolName,
       input: event.input,
       mode: state.mode,
       tokensaveAvailable: state.binaryAvailable,
-      projectInitialized,
+      projectInitialized: true,
       wasConsulted: (candidate) => wasCandidateConsulted(state, candidate),
     });
 
@@ -66,6 +67,9 @@ export default function pluginTokensave(pi: ExtensionAPI): void {
   });
 
   pi.on("before_agent_start", (event) => {
+    const cwd = event.systemPromptOptions?.cwd;
+    if (!cwd || !isProjectInitialized(resolveProjectRoot(cwd))) return;
+
     const contextFiles = event.systemPromptOptions?.contextFiles ?? [];
     const alreadyLoaded = contextFiles.some(
       (file) => typeof file.content === "string" && file.content.includes("pi-tokensave:start"),

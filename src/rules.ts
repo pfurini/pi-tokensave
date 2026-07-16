@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-export const RULES_BLOCK_VERSION = "1";
+export const RULES_BLOCK_VERSION = "2";
 const START_MARKER = "<!-- pi-tokensave:start -->";
 const END_MARKER = "<!-- pi-tokensave:end -->";
 const VERSION_MARKER_PREFIX = "<!-- pi-tokensave:version=";
@@ -22,8 +22,13 @@ ${VERSION_MARKER_PREFIX}${version} -->
 
 ## TokenSave Code Intelligence
 
-### Two-Step Rule — mandatory
+### Applicability
 
+These rules apply only when the current project contains a \`.tokensave/\`
+directory. When it does not, do not call TokenSave tools and use Pi's normal
+code exploration tools directly.
+
+### Two-Step Rule — mandatory
 **Step 1 — Discover:** Use TokenSave tools to locate symbols, understand code
 areas, build task context, and analyze dependencies before using grep, find,
 or broad speculative reads.

@@ -83,18 +83,20 @@ Mode is persisted to `~/.pi/agent/pi-tokensave.json` (never inside the project).
   logs, config files, migrations, generated code, markdown, JSON/YAML/TOML — is
   allowed through unmodified. After TokenSave returns no result or errors, the
   fallback to manual search is allowed for that investigation.
-- **`prefer`** — never blocks. Shows the tools, injects the instructions, and may
-  emit a single short notice per session when it sees manual exploration that
-  TokenSave could have served instead.
+- **`prefer`** — never blocks. Shows the tools, injects the instructions in
+  initialized projects, and may emit a single short notice per session when it
+  sees manual exploration that TokenSave could have served instead.
 
 ## Instructions block
 
 The plugin manages an idempotent block in `~/.pi/agent/AGENTS.md` between
 `<!-- pi-tokensave:start -->` / `<!-- pi-tokensave:end -->` markers. Everything
 else in that file is left untouched. It is installed on first load and refreshed
-on every `session_start` (no-op when already up to date). The same instructions
-are also injected into the current session's system prompt via `before_agent_start`,
-so a fresh install applies immediately without requiring `/reload`.
+on every `session_start` (no-op when already up to date). The block explicitly
+applies only to projects containing `.tokensave/`. The same instructions are
+injected into the current session's system prompt via `before_agent_start` only
+when that directory exists, so uninitialized projects neither probe the TokenSave
+binary nor change the normal exploration workflow.
 
 ## Uninstall
 

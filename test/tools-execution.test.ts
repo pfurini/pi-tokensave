@@ -100,6 +100,23 @@ test("tokensave_status renders a status object", async () => {
   assert.match(result.content[0].text, /nodes: 120/);
 });
 
+test("tokensave_status does not launch a process outside initialized projects", async () => {
+  const pi = fakePi();
+  const state = createSessionState("enforce");
+  registerTokensaveTools(pi, () => state);
+  const ctx = fakeCtx(mkdtempSync(join(tmpdir(), "pi-tokensave-exec-")));
+  let processCount = 0;
+  setExecFileImplForTest((_file, _args, _options, cb: Cb) => {
+    processCount += 1;
+    cb(null, "tokensave 7.0.0", "");
+    return {};
+  });
+
+  const result = await execute(pi, "tokensave_status", {}, ctx);
+  assert.match(result.content[0].text, /not initialized/i);
+  assert.equal(processCount, 0);
+});
+
 // ---------------------------------------------------------------------------
 // tokensave_context: markdown response
 // ---------------------------------------------------------------------------

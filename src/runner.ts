@@ -302,6 +302,7 @@ export interface TokensaveAvailability {
   available: boolean;
   reason?: TokensaveAvailabilityReason;
 }
+let availabilityCheckInFlight: Promise<TokensaveAvailability> | undefined;
 
 /**
  * Determines whether `tokensave --version` actually completes successfully.
@@ -310,8 +311,10 @@ export interface TokensaveAvailability {
  * is usable just because the exec call didn't hit ENOENT.
  */
 export async function checkTokensaveAvailability(timeoutMs = 4000): Promise<TokensaveAvailability> {
+  if (availabilityCheckInFlight) return availabilityCheckInFlight;
+
   const binary = resolveTokensaveBinary();
-  return new Promise((resolve) => {
+  const check = new Promise<TokensaveAvailability>((resolve) => {
     closeStdin(execFileImpl(binary, ["--version"], { timeout: timeoutMs, maxBuffer: 1024 * 1024 }, (error) => {
       if (!error) {
         resolve({ available: true });
@@ -332,6 +335,13 @@ export async function checkTokensaveAvailability(timeoutMs = 4000): Promise<Toke
       resolve({ available: false, reason: "failed" });
     }));
   });
+
+  availabilityCheckInFlight = check;
+  try {
+    return await check;
+  } finally {
+    if (availabilityCheckInFlight === check) availabilityCheckInFlight = undefined;
+  }
 }
 
 /** Convenience boolean wrapper over {@link checkTokensaveAvailability}. */
