@@ -159,3 +159,48 @@ test("tool_call in prefer mode does not recommend a TokenSave tool when the bina
     else process.env.HOME = previousHome;
   }
 });
+
+test("autoManageBranches reconciles on session start and before a TokenSave tool after refs change", async () => {
+  const fakeHome = mkdtempSync(join(tmpdir(), "pi-tokensave-home-"));
+  mkdirSync(join(fakeHome, ".pi", "agent"), { recursive: true });
+  writeFileSync(
+    join(fakeHome, ".pi", "agent", "pi-tokensave.json"),
+    JSON.stringify({ autoManageBranches: true }),
+    "utf8",
+  );
+  const previousHome = process.env.HOME;
+  process.env.HOME = fakeHome;
+
+  const tokensaveCommands: string[][] = [];
+  setExecFileImplForTest((_file, args: string[], _options, cb: Cb) => {
+    if (args[0] !== "--version") tokensaveCommands.push(args);
+    cb(null, args[0] === "--version" ? "tokensave 7.4.0" : "ok", "");
+    return {};
+  });
+
+  try {
+    let refs = "*\tmain";
+    const pi = fakePi();
+    pi.exec = async () => ({ code: 0, stdout: refs, stderr: "", killed: false });
+    pluginTokensave(pi);
+
+    const projectDir = initializedProjectDir();
+    const ctx = { cwd: projectDir, ui: { notify: () => {} } };
+
+    await pi.handlers.session_start({}, ctx);
+    assert.deepEqual(
+      tokensaveCommands.map((args) => args.slice(0, 2)),
+      [["branch", "add"], ["branch", "gc"]],
+    );
+
+    await pi.handlers.tool_call({ toolName: "tokensave_status", input: {} }, ctx);
+    assert.equal(tokensaveCommands.length, 2, "unchanged refs should stay cached");
+
+    refs = " \tmain\n*\tfeature/new";
+    await pi.handlers.tool_call({ toolName: "tokensave_status", input: {} }, ctx);
+    assert.equal(tokensaveCommands.length, 4, "a branch change should reconcile before the tool runs");
+  } finally {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+  }
+});

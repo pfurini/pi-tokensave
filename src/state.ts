@@ -13,25 +13,46 @@ import { dirname, join } from "node:path";
 
 export type TokensaveMode = "prefer" | "enforce";
 
+export interface TokensaveConfig {
+  mode: TokensaveMode;
+  autoManageBranches: boolean;
+}
+
 export const DEFAULT_MODE: TokensaveMode = "enforce";
+export const DEFAULT_AUTO_MANAGE_BRANCHES = false;
 
 export function modeConfigPath(): string {
   return join(homedir(), ".pi", "agent", "pi-tokensave.json");
 }
 
-export function loadPersistedMode(path: string = modeConfigPath()): TokensaveMode {
+function readPersistedConfig(path: string): Record<string, unknown> {
   try {
-    if (!existsSync(path)) return DEFAULT_MODE;
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as { mode?: string };
-    return parsed.mode === "prefer" ? "prefer" : DEFAULT_MODE;
+    if (!existsSync(path)) return {};
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
   } catch {
-    return DEFAULT_MODE;
+    return {};
   }
+}
+
+export function loadPersistedConfig(path: string = modeConfigPath()): TokensaveConfig {
+  const parsed = readPersistedConfig(path);
+  return {
+    mode: parsed.mode === "prefer" ? "prefer" : DEFAULT_MODE,
+    autoManageBranches: parsed.autoManageBranches === true,
+  };
+}
+
+export function loadPersistedMode(path: string = modeConfigPath()): TokensaveMode {
+  return loadPersistedConfig(path).mode;
 }
 
 export function savePersistedMode(mode: TokensaveMode, path: string = modeConfigPath()): void {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify({ mode }, null, 2)}\n`, "utf8");
+  const config = { ...readPersistedConfig(path), mode };
+  writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 }
 
 export interface TokensaveSessionState {

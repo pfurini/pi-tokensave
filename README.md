@@ -71,7 +71,16 @@ is stated in every tool's guidelines and in the injected instructions.
 /tokensave-doctor          Diagnose binary, init, rules block, and mode
 ```
 
-Mode is persisted to `~/.pi/agent/pi-tokensave.json` (never inside the project).
+Settings are persisted to `~/.pi/agent/pi-tokensave.json` (never inside the project):
+
+```json
+{
+  "mode": "enforce",
+  "autoManageBranches": true
+}
+```
+
+`autoManageBranches` is opt-in and defaults to `false`.
 
 ## Modes
 
@@ -86,6 +95,18 @@ Mode is persisted to `~/.pi/agent/pi-tokensave.json` (never inside the project).
 - **`prefer`** — never blocks. Shows the tools, injects the instructions in
   initialized projects, and may emit a single short notice per session when it
   sees manual exploration that TokenSave could have served instead.
+
+## Pi-managed branch indexes
+
+When `autoManageBranches` is `true`, the extension reconciles TokenSave indexes at
+session start and before a TokenSave tool call whenever the local branch set or
+current branch changed. It runs `tokensave branch add` for the checked-out branch
+and `tokensave branch gc` to remove indexes for deleted local branches.
+
+The extension fingerprints local branch refs, so unchanged tool calls do not spawn
+additional TokenSave commands. This automation runs only while Pi is active; branch
+changes made elsewhere are reconciled when the next Pi session starts or TokenSave
+tool runs.
 
 ## Instructions block
 

@@ -6,25 +6,69 @@
  * tools.
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { createBranchIndexLifecycle } from "./branch-lifecycle.ts";
 import { registerTokensaveCommands } from "./commands.ts";
 import { detectSearchCandidate, evaluateGuard, type GuardableToolName } from "./guard.ts";
 import { isProjectInitialized, resolveProjectRoot } from "./project.ts";
 import { checkTokensaveAvailable } from "./runner.ts";
 import { buildRulesBlock, installRulesBlock } from "./rules.ts";
-import { createSessionState, loadPersistedMode, wasCandidateConsulted, type TokensaveSessionState } from "./state.ts";
+import { createSessionState, loadPersistedConfig, wasCandidateConsulted, type TokensaveSessionState } from "./state.ts";
 import { registerTokensaveTools } from "./tools.ts";
 
 const GUARDED_TOOLS = new Set<GuardableToolName>(["bash", "grep", "find"]);
+const TOKENSAVE_TOOL_PREFIX = "tokensave_";
+
+function createBranchReconciliation(
+  pi: ExtensionAPI,
+  getConfig: () => { autoManageBranches: boolean },
+  getState: () => TokensaveSessionState,
+) {
+  const lifecycle = createBranchIndexLifecycle();
+  const warnedRoots = new Set<string>();
+
+  return {
+    reset() {
+      lifecycle.reset();
+      warnedRoots.clear();
+    },
+    async run(ctx: ExtensionContext): Promise<void> {
+      if (!getConfig().autoManageBranches) return;
+
+      const root = resolveProjectRoot(ctx.cwd);
+      if (!isProjectInitialized(root)) return;
+
+      const state = getState();
+      if (state.binaryAvailable === undefined) {
+        state.binaryAvailable = await checkTokensaveAvailable();
+      }
+      if (!state.binaryAvailable) return;
+
+      const result = await lifecycle.reconcile(pi, root);
+      if (result.warnings.length > 0 && !warnedRoots.has(root)) {
+        warnedRoots.add(root);
+        ctx.ui.notify(
+          `pi-tokensave could not reconcile branch indexes:\n${result.warnings.join("\n")}`,
+          "warning",
+        );
+      }
+    },
+  };
+}
 
 export default function pluginTokensave(pi: ExtensionAPI): void {
-  let state: TokensaveSessionState = createSessionState(loadPersistedMode());
+  let config = loadPersistedConfig();
+  let state: TokensaveSessionState = createSessionState(config.mode);
+  const branchReconciliation = createBranchReconciliation(pi, () => config, () => state);
 
-  pi.on("session_start", async (_event, _ctx) => {
-    state = createSessionState(loadPersistedMode());
+  pi.on("session_start", async (_event, ctx) => {
+    config = loadPersistedConfig();
+    state = createSessionState(config.mode);
+    branchReconciliation.reset();
     // The global block is conditional on .tokensave presence, so it is safe to
     // refresh for every session even though AGENTS.md is shared by all projects.
     installRulesBlock();
+    await branchReconciliation.run(ctx);
   });
 
   registerTokensaveTools(pi, () => state);
@@ -37,6 +81,10 @@ export default function pluginTokensave(pi: ExtensionAPI): void {
   );
 
   pi.on("tool_call", async (event, ctx) => {
+    if (event.toolName.startsWith(TOKENSAVE_TOOL_PREFIX)) {
+      await branchReconciliation.run(ctx);
+      return;
+    }
     if (!GUARDED_TOOLS.has(event.toolName as GuardableToolName)) return;
     const toolName = event.toolName as GuardableToolName;
 
