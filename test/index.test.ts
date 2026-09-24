@@ -342,6 +342,36 @@ test("autoManageBranches starts reconciling at session start without blocking it
   }
 });
 
+test("the guard stands down while a skill disallows tokensave_find_symbol, but the rules stay", async () => {
+  const previousHome = process.env.HOME;
+  process.env.HOME = mkdtempSync(join(tmpdir(), "pi-tokensave-home-"));
+  setExecFileImplForTest((_file, _args: string[], _options, cb: Cb) => {
+    cb(null, "tokensave 7.12.1", "");
+    return {};
+  });
+
+  try {
+    // The Pi fork: the skill's `disallowed-tools` keeps the tool active but not callable.
+    const pi = fakePi() as ExtensionAPI & { handlers: Record<string, Handler>; getCallableTools: () => string[] };
+    pi.getCallableTools = () => pi.getActiveTools().filter((name) => name !== "tokensave_find_symbol");
+    pluginTokensave(pi);
+    const projectDir = initializedProjectDir();
+
+    const search = await pi.handlers.tool_call(
+      { toolName: "bash", input: { command: 'rg "WellModel" .' } },
+      { cwd: projectDir, ui: { notify: () => {} } },
+    );
+    assert.equal(search, undefined, "the block would point at a tool the skill blocks");
+
+    const event = { prompt: "hello", systemPrompt: "base prompt", systemPromptOptions: promptOptions(projectDir) };
+    await pi.handlers.before_agent_start(event, {});
+    assert.ok(event.systemPromptOptions.sections.tokensave?.includes("pi-tokensave:start"));
+  } finally {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+  }
+});
+
 test("a subagent session in the same process reuses the parent's branch reconciliation", async () => {
   const fakeHome = mkdtempSync(join(tmpdir(), "pi-tokensave-home-"));
   mkdirSync(join(fakeHome, ".pi", "agent"), { recursive: true });

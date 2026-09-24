@@ -105,13 +105,18 @@ Both modes inspect the `bash`, `grep`, and `find` tools, plus the `anchor_grep` 
 from [pi-hashline-edit-pro](https://www.npmjs.com/package/pi-hashline-edit-pro),
 which replaces `grep` in sessions that load it.
 
-Both modes stand down in a session where `tokensave_find_symbol` is not an active
-tool, because the block message and the notice point at it. The rules block is
-likewise injected only when at least one `tokensave_*` tool is active. This covers
+Both modes stand down when the model cannot call `tokensave_find_symbol`, because
+the block message and the notice point at it. That covers
 [pi-subagents](https://github.com/tintinweb/pi-subagents) agents whose `tools:` list
-or `ext:` selectors leave pi-tokensave's tools out. A skill's `disallowed-tools` is
-not visible to extensions: while such a skill runs, switch to `prefer` mode if it
-disallows the TokenSave tools.
+or `ext:` selectors leave pi-tokensave's tools out. On the
+[pfurini/pi](https://github.com/pfurini/pi) fork it also covers a running skill whose
+`disallowed-tools` blocks the tool: the fork's `pi.getCallableTools()` reports it.
+Upstream Pi has no such API, so there the guard can still point at a tool the skill
+blocks; switch to `prefer` mode while such a skill runs.
+
+The rules block is injected only when at least one `tokensave_*` tool is active. A
+skill's `disallowed-tools` does not remove it, because the block is recorded in the
+transcript and toggling it per skill turn would rewrite the prompt.
 
 ## Pi-managed branch indexes
 

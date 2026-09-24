@@ -30,12 +30,18 @@ const RULES_MARKER = "pi-tokensave:start";
 const RULES_SECTION_NAME = "tokensave";
 
 /**
- * Whether the current session can call a matching tool. A pi-subagents child can
- * load this extension yet leave its tools inactive (`tools:` lists, `ext:`
- * selectors), so the guard and the rules must not assume them.
+ * Whether the model can call `name` in the current request. A pi-subagents child
+ * can load this extension yet leave its tools inactive (`tools:` lists, `ext:`
+ * selectors), and a running skill's `disallowed-tools` blocks tools that stay
+ * active. The guard must not point the model at such a tool.
+ *
+ * The Pi fork (github.com/pfurini/pi) reports the tools the current request can
+ * call. Upstream Pi 0.87 has no such method; there the active set is the best
+ * available answer, and a skill's `disallowed-tools` goes unseen.
  */
-function hasActiveTool(pi: ExtensionAPI, matches: (name: string) => boolean): boolean {
-  return pi.getActiveTools().some(matches);
+function canCallTool(pi: ExtensionAPI, name: string): boolean {
+  const callable = (pi as { getCallableTools?: () => string[] }).getCallableTools?.();
+  return (callable ?? pi.getActiveTools()).includes(name);
 }
 
 function createBranchReconciliation(
@@ -118,7 +124,7 @@ export default function pluginTokensave(pi: ExtensionAPI): void {
     const root = resolveProjectRoot(ctx.cwd);
     if (!isProjectInitialized(root)) return;
     // Both the block reason and the prefer-mode notice point at this tool.
-    if (!hasActiveTool(pi, (name) => name === "tokensave_find_symbol")) return;
+    if (!canCallTool(pi, "tokensave_find_symbol")) return;
 
     if (state.binaryAvailable === undefined) {
       state.binaryAvailable = await checkTokensaveAvailable();
@@ -147,7 +153,10 @@ export default function pluginTokensave(pi: ExtensionAPI): void {
     const options = event.systemPromptOptions;
     if (!isProjectInitialized(resolveProjectRoot(options.cwd))) return;
     // Rules that mandate TokenSave tools only mislead a session that cannot call them.
-    if (!hasActiveTool(pi, (name) => name.startsWith(TOKENSAVE_TOOL_PREFIX))) return;
+    // The check uses the active set, not the callable one: the rules section is
+    // recorded in the transcript, and toggling it for each skill turn would rewrite
+    // the prompt and invalidate the provider's cached prefix.
+    if (!pi.getActiveTools().some((name) => name.startsWith(TOKENSAVE_TOOL_PREFIX))) return;
 
     // The rendered prompt already holds the block when a loaded AGENTS.md carries
     // it, or when a subagent embeds its parent's prompt (pi-subagents append mode).
