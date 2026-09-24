@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { resolveAgentDir } from "./agent-dir.ts";
 
-export const RULES_BLOCK_VERSION = "2";
+export const RULES_BLOCK_VERSION = "3";
 const START_MARKER = "<!-- pi-tokensave:start -->";
 const END_MARKER = "<!-- pi-tokensave:end -->";
 const VERSION_MARKER_PREFIX = "<!-- pi-tokensave:version=";
@@ -27,7 +27,8 @@ ${VERSION_MARKER_PREFIX}${version} -->
 
 These rules apply only when the current project contains a \`.tokensave/\`
 directory. When it does not, do not call TokenSave tools and use Pi's normal
-code exploration tools directly.
+code exploration tools directly. When a TokenSave tool is unavailable or
+blocked in the current turn, also use Pi's normal tools directly.
 
 ### Two-Step Rule — mandatory
 **Step 1 — Discover:** Use TokenSave tools to locate symbols, understand code

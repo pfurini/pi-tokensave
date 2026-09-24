@@ -49,6 +49,18 @@ test("applyRulesBlock updates an old block to the current version", () => {
   assert.ok(content.includes(buildRulesBlock("1")));
 });
 
+test("the rules tell the model to fall back when a TokenSave tool is unavailable or blocked", () => {
+  const block = buildRulesBlock();
+  assert.ok(block.includes("When a TokenSave tool is unavailable or\nblocked in the current turn, also use Pi's normal tools directly."));
+
+  // An installed version-2 block is replaced in place; the rest of the file is kept.
+  const v2 = buildRulesBlock("2").replace(/ When a TokenSave tool is unavailable or\nblocked in the current turn, also use Pi's normal tools directly\./, "");
+  const original = `# Global\n\n${v2}\n\nMore rules.\n`;
+  const { content, changed } = applyRulesBlock(original);
+  assert.equal(changed, true);
+  assert.equal(content, `# Global\n\n${block}\n\nMore rules.\n`);
+});
+
 test("stripRulesBlock removes only the managed block and preserves surrounding content", () => {
   const before = "Line before.\n";
   const after = "\nLine after.\n";
