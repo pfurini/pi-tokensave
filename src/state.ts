@@ -1,15 +1,15 @@
 /**
  * Session-scoped guard state and persisted user preference (mode).
  *
- * Persisted mode lives under ~/.pi/agent/ (never inside the project) per a
- * simple JSON file. Session state is in-memory only and is intentionally
- * small: it exists to unblock the guard after TokenSave has been consulted,
- * or after it failed/returned nothing useful.
+ * Persisted mode lives in a simple JSON file in the session's agent directory
+ * (default ~/.pi/agent/, never inside the project). Session state is in-memory
+ * only and is intentionally small: it exists to unblock the guard after
+ * TokenSave has been consulted, or after it failed/returned nothing useful.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { resolveAgentDir } from "./agent-dir.ts";
 
 export type TokensaveMode = "prefer" | "enforce";
 
@@ -21,8 +21,8 @@ export interface TokensaveConfig {
 export const DEFAULT_MODE: TokensaveMode = "enforce";
 export const DEFAULT_AUTO_MANAGE_BRANCHES = false;
 
-export function modeConfigPath(): string {
-  return join(homedir(), ".pi", "agent", "pi-tokensave.json");
+export function modeConfigPath(agentDir: string = resolveAgentDir()): string {
+  return join(agentDir, "pi-tokensave.json");
 }
 
 function readPersistedConfig(path: string): Record<string, unknown> {

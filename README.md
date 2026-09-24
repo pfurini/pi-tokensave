@@ -71,7 +71,9 @@ is stated in every tool's guidelines and in the injected instructions.
 /tokensave-doctor          Diagnose binary, init, rules block, and mode
 ```
 
-Settings are persisted to `~/.pi/agent/pi-tokensave.json` (never inside the project):
+Settings are persisted to `pi-tokensave.json` in Pi's agent directory, never inside
+the project. The agent directory is `~/.pi/agent` unless `PI_CODING_AGENT_DIR` or an
+SDK session created with its own `agentDir` points elsewhere:
 
 ```json
 {
@@ -126,7 +128,8 @@ are not synced; run `/tokensave-sync` for those.
 
 ## Instructions block
 
-The plugin manages an idempotent block in `~/.pi/agent/AGENTS.md` between
+The plugin manages an idempotent block in the agent directory's `AGENTS.md`
+(`~/.pi/agent/AGENTS.md` by default) between
 `<!-- pi-tokensave:start -->` / `<!-- pi-tokensave:end -->` markers. Everything
 else in that file is left untouched. It is installed on first load and refreshed
 on every `session_start` (no-op when already up to date). The block explicitly

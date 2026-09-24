@@ -5,6 +5,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { resolveAgentDir } from "./agent-dir.ts";
 import { isProjectInitialized, resolveProjectRoot, resolveTokensaveBinary } from "./project.ts";
 import { checkTokensaveAvailable, runTokensaveCommand } from "./runner.ts";
 import { agentsMdPath, installRulesBlock, removeRulesBlock } from "./rules.ts";
@@ -68,7 +69,7 @@ async function handleDoctor(
   const initialized = isProjectInitialized(root);
   lines.push(initialized ? `✔ Project initialized (${join(root, ".tokensave")})` : "✘ Project not initialized. Run /tokensave-init.");
 
-  const agentsPath = agentsPathOverride ?? agentsMdPath();
+  const agentsPath = agentsPathOverride ?? agentsMdPath(resolveAgentDir(ctx));
   const hasBlock = existsSync(agentsPath) && readFileSync(agentsPath, "utf8").includes("pi-tokensave:start");
   lines.push(hasBlock ? `✔ AGENTS.md rules block present (${agentsPath})` : `✘ AGENTS.md rules block missing. Run /tokensave-rules-install.`);
 
@@ -116,16 +117,17 @@ export function registerTokensaveCommands(
         return;
       }
       setMode(value);
-      savePersistedMode(value, modePathOverride);
-      ctx.ui.notify(`pi-tokensave mode set to '${value}' (persisted to ${modePathOverride ?? modeConfigPath()}).`, "info");
+      const modePath = modePathOverride ?? modeConfigPath(resolveAgentDir(ctx));
+      savePersistedMode(value, modePath);
+      ctx.ui.notify(`pi-tokensave mode set to '${value}' (persisted to ${modePath}).`, "info");
     },
   });
 
   pi.registerCommand("tokensave-rules-install", {
-    description: "Install/update the pi-tokensave instructions block in ~/.pi/agent/AGENTS.md",
+    description: "Install/update the pi-tokensave instructions block in the agent directory's AGENTS.md",
     handler: async (_args, ctx) => {
-      const { changed } = installRulesBlock(agentsPathOverride);
-      const path = agentsPathOverride ?? agentsMdPath();
+      const path = agentsPathOverride ?? agentsMdPath(resolveAgentDir(ctx));
+      const { changed } = installRulesBlock(path);
       ctx.ui.notify(
         changed
           ? `Installed pi-tokensave rules in ${path}. Run /reload or start a new session to apply immediately.`
@@ -136,10 +138,10 @@ export function registerTokensaveCommands(
   });
 
   pi.registerCommand("tokensave-rules-remove", {
-    description: "Remove the pi-tokensave instructions block from ~/.pi/agent/AGENTS.md",
+    description: "Remove the pi-tokensave instructions block from the agent directory's AGENTS.md",
     handler: async (_args, ctx) => {
-      const { changed } = removeRulesBlock(agentsPathOverride);
-      const path = agentsPathOverride ?? agentsMdPath();
+      const path = agentsPathOverride ?? agentsMdPath(resolveAgentDir(ctx));
+      const { changed } = removeRulesBlock(path);
       ctx.ui.notify(changed ? `Removed pi-tokensave rules from ${path}.` : "No pi-tokensave rules block found.", "info");
     },
   });

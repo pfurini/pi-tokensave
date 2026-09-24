@@ -1,19 +1,20 @@
 /**
- * Idempotent management of the pi-tokensave instruction block inside
- * ~/.pi/agent/AGENTS.md. Content outside the markers is never touched.
+ * Idempotent management of the pi-tokensave instruction block inside the
+ * AGENTS.md of the session's agent directory (default ~/.pi/agent/AGENTS.md).
+ * Content outside the markers is never touched.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { resolveAgentDir } from "./agent-dir.ts";
 
 export const RULES_BLOCK_VERSION = "2";
 const START_MARKER = "<!-- pi-tokensave:start -->";
 const END_MARKER = "<!-- pi-tokensave:end -->";
 const VERSION_MARKER_PREFIX = "<!-- pi-tokensave:version=";
 
-export function agentsMdPath(): string {
-  return join(homedir(), ".pi", "agent", "AGENTS.md");
+export function agentsMdPath(agentDir: string = resolveAgentDir()): string {
+  return join(agentDir, "AGENTS.md");
 }
 
 export function buildRulesBlock(version: string = RULES_BLOCK_VERSION): string {

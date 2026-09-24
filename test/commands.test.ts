@@ -152,3 +152,27 @@ test("tokensave-doctor reports mode and rules-block presence", async () => {
   assert.ok(report.includes("Mode: prefer"));
   assert.ok(report.includes("AGENTS.md rules block present"));
 });
+
+test("mode, rules, and doctor commands use the session agentDir when no override is given", async () => {
+  setExecFileImplForTest((_f, _args: string[], _o, cb: Cb) => {
+    cb(null, "tokensave 7.12.1", "");
+    return {};
+  });
+
+  const agentDir = mkdtempSync(join(tmpdir(), "pi-tokensave-agentdir-"));
+  const pi = fakePi();
+  const state = { mode: "enforce" as TokensaveMode };
+  registerTokensaveCommands(pi, () => state, (m) => (state.mode = m));
+
+  const ctx = Object.assign(fakeCtx(mkdtempSync(join(tmpdir(), "pi-tokensave-cmd-"))), { agentDir });
+
+  await pi.commands["tokensave-mode"].handler("prefer", ctx);
+  assert.deepEqual(JSON.parse(readFileSync(join(agentDir, "pi-tokensave.json"), "utf8")), { mode: "prefer" });
+
+  await pi.commands["tokensave-rules-install"].handler("", ctx);
+  assert.ok(readFileSync(join(agentDir, "AGENTS.md"), "utf8").includes("pi-tokensave:start"));
+
+  await pi.commands["tokensave-doctor"].handler("", ctx);
+  const report = ctx.notifications.at(-1)?.message ?? "";
+  assert.ok(report.includes(`AGENTS.md rules block present (${join(agentDir, "AGENTS.md")})`));
+});

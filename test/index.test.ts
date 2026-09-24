@@ -6,12 +6,15 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import pluginTokensave from "../src/index.ts";
 import { setExecFileImplForTest } from "../src/runner.ts";
+
+// Tests below isolate settings through a fake HOME; the env override would win over it.
+delete process.env.PI_CODING_AGENT_DIR;
 
 type Cb = (error: (NodeJS.ErrnoException & { killed?: boolean; signal?: string }) | null, stdout: string, stderr: string) => void;
 
@@ -245,6 +248,36 @@ test("autoManageBranches starts reconciling at session start without blocking it
     refs = `*\trefs/heads/main\t${"b".repeat(40)}`;
     await pi.handlers.tool_call({ toolName: "tokensave_status", input: {} }, ctx);
     assert.equal(tokensaveCommands.length, 6, "a new commit should sync before the tool runs");
+  } finally {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+  }
+});
+
+test("a session with its own agentDir reads settings and installs rules there, not under HOME", async () => {
+  const fakeHome = mkdtempSync(join(tmpdir(), "pi-tokensave-home-"));
+  const agentDir = mkdtempSync(join(tmpdir(), "pi-tokensave-agentdir-"));
+  writeFileSync(join(agentDir, "pi-tokensave.json"), JSON.stringify({ mode: "prefer" }), "utf8");
+  const previousHome = process.env.HOME;
+  process.env.HOME = fakeHome;
+  setExecFileImplForTest((_file, _args: string[], _options, cb: Cb) => {
+    cb(null, "tokensave 7.12.1", "");
+    return {};
+  });
+
+  try {
+    const pi = fakePi() as ExtensionAPI & { handlers: Record<string, Handler>; agentDir: string };
+    pi.agentDir = agentDir;
+    pluginTokensave(pi);
+    const ctx = { cwd: initializedProjectDir(), agentDir, ui: { notify: () => {} } };
+    const search = { toolName: "bash", input: { command: 'rg "WellModel" .' } };
+
+    assert.equal(await pi.handlers.tool_call(search, ctx), undefined, "load-time settings come from pi.agentDir");
+
+    await pi.handlers.session_start({}, ctx);
+    assert.equal(await pi.handlers.tool_call(search, ctx), undefined, "session settings come from ctx.agentDir");
+    assert.ok(readFileSync(join(agentDir, "AGENTS.md"), "utf8").includes("pi-tokensave:start"));
+    assert.equal(existsSync(join(fakeHome, ".pi", "agent", "AGENTS.md")), false);
   } finally {
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;

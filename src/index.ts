@@ -7,13 +7,20 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { resolveAgentDir } from "./agent-dir.ts";
 import { createBranchIndexLifecycle } from "./branch-lifecycle.ts";
 import { registerTokensaveCommands } from "./commands.ts";
 import { detectSearchCandidate, evaluateGuard, type GuardableToolName } from "./guard.ts";
 import { isProjectInitialized, resolveProjectRoot } from "./project.ts";
 import { checkTokensaveAvailable } from "./runner.ts";
-import { buildRulesBlock, installRulesBlock } from "./rules.ts";
-import { createSessionState, loadPersistedConfig, wasCandidateConsulted, type TokensaveSessionState } from "./state.ts";
+import { agentsMdPath, buildRulesBlock, installRulesBlock } from "./rules.ts";
+import {
+  createSessionState,
+  loadPersistedConfig,
+  modeConfigPath,
+  wasCandidateConsulted,
+  type TokensaveSessionState,
+} from "./state.ts";
 import { registerTokensaveTools } from "./tools.ts";
 
 const GUARDED_TOOLS = new Set<GuardableToolName>(["bash", "grep", "find", "anchor_grep"]);
@@ -57,17 +64,20 @@ function createBranchReconciliation(
 }
 
 export default function pluginTokensave(pi: ExtensionAPI): void {
-  let config = loadPersistedConfig();
+  // Sessions created with an explicit agentDir keep their settings and AGENTS.md
+  // there, not in ~/.pi/agent. `pi.agentDir` is the same directory ctx reports later.
+  let config = loadPersistedConfig(modeConfigPath(resolveAgentDir(pi)));
   let state: TokensaveSessionState = createSessionState(config.mode);
   const branchReconciliation = createBranchReconciliation(pi, () => config, () => state);
 
   pi.on("session_start", async (_event, ctx) => {
-    config = loadPersistedConfig();
+    const agentDir = resolveAgentDir(ctx);
+    config = loadPersistedConfig(modeConfigPath(agentDir));
     state = createSessionState(config.mode);
     branchReconciliation.reset();
     // The global block is conditional on .tokensave presence, so it is safe to
     // refresh for every session even though AGENTS.md is shared by all projects.
-    installRulesBlock();
+    installRulesBlock(agentsMdPath(agentDir));
     // A sync after long drift can take seconds, so session start does not wait
     // for it. A TokenSave tool call joins the reconciliation still in flight.
     // The catch covers a ctx made stale by a session switch before it settles.
