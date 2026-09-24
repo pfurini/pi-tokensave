@@ -133,10 +133,16 @@ The plugin manages an idempotent block in the agent directory's `AGENTS.md`
 `<!-- pi-tokensave:start -->` / `<!-- pi-tokensave:end -->` markers. Everything
 else in that file is left untouched. It is installed on first load and refreshed
 on every `session_start` (no-op when already up to date). The block explicitly
-applies only to projects containing `.tokensave/`. The same instructions are
-injected into the current session's system prompt via `before_agent_start` only
-when that directory exists, so uninitialized projects neither probe the TokenSave
-binary nor change the normal exploration workflow.
+applies only to projects containing `.tokensave/`.
+
+When the system prompt of a run does not already contain the block, the extension
+adds it through `before_agent_start` as a `<tokensave>` prompt section. That covers
+the first session after installation (Pi read `AGENTS.md` before the block existed)
+and subagent sessions, which load no `AGENTS.md`. A section leaves the rest of the
+prompt intact. On hosts without prompt sections, or when an earlier extension already
+replaced the whole prompt, the block is appended to the prompt text instead.
+Injection happens only when `.tokensave/` exists, so uninitialized projects neither
+probe the TokenSave binary nor change the normal exploration workflow.
 
 ## Uninstall
 

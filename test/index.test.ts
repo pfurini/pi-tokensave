@@ -101,6 +101,49 @@ test("before_agent_start skips rule injection outside TokenSave projects", async
   assert.equal(result, undefined);
 });
 
+/** Mirrors the fork's normalized prompt options: collections are always present. */
+function sectionedPromptOptions(cwd: string) {
+  return { cwd, contextFiles: [], sections: {} as Record<string, string>, forceSystemPrompt: undefined as string | undefined };
+}
+
+test("before_agent_start adds the rules as a prompt section instead of replacing the prompt", async () => {
+  const pi = fakePi();
+  pluginTokensave(pi);
+  const event = { prompt: "hello", systemPrompt: "base prompt", systemPromptOptions: sectionedPromptOptions(initializedProjectDir()) };
+
+  const result = await pi.handlers.before_agent_start(event, {});
+  assert.equal(result, undefined, "no systemPrompt override");
+  assert.ok(event.systemPromptOptions.sections.tokensave?.includes("pi-tokensave:start"));
+});
+
+test("before_agent_start appends to the text when an earlier handler already replaced the prompt", async () => {
+  const pi = fakePi();
+  pluginTokensave(pi);
+  const systemPromptOptions = sectionedPromptOptions(initializedProjectDir());
+  systemPromptOptions.forceSystemPrompt = "replaced prompt";
+  const event = { prompt: "hello", systemPrompt: "replaced prompt", systemPromptOptions };
+
+  const result = await pi.handlers.before_agent_start(event, {});
+  assert.ok(result?.systemPrompt.startsWith("replaced prompt"));
+  assert.ok(result?.systemPrompt.includes("pi-tokensave:start"));
+  assert.deepEqual(systemPromptOptions.sections, {});
+});
+
+test("before_agent_start does not inject twice when the prompt embeds a parent prompt that has the block", async () => {
+  const pi = fakePi();
+  pluginTokensave(pi);
+  // pi-subagents append mode: the parent's prompt, with its AGENTS.md block, becomes the preamble.
+  const event = {
+    prompt: "hello",
+    systemPrompt: "You are Appender.\n\n<!-- pi-tokensave:start -->\nrules\n<!-- pi-tokensave:end -->",
+    systemPromptOptions: sectionedPromptOptions(initializedProjectDir()),
+  };
+
+  const result = await pi.handlers.before_agent_start(event, {});
+  assert.equal(result, undefined);
+  assert.deepEqual(event.systemPromptOptions.sections, {});
+});
+
 test("guarded tool calls do not probe the TokenSave binary outside initialized projects", async () => {
   const pi = fakePi();
   pluginTokensave(pi);

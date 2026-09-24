@@ -25,6 +25,9 @@ import { registerTokensaveTools } from "./tools.ts";
 
 const GUARDED_TOOLS = new Set<GuardableToolName>(["bash", "grep", "find", "anchor_grep"]);
 const TOKENSAVE_TOOL_PREFIX = "tokensave_";
+const RULES_MARKER = "pi-tokensave:start";
+/** Rendered as `<tokensave>...</tokensave>` in the system prompt. */
+const RULES_SECTION_NAME = "tokensave";
 
 function createBranchReconciliation(
   pi: ExtensionAPI,
@@ -128,19 +131,30 @@ export default function pluginTokensave(pi: ExtensionAPI): void {
   });
 
   pi.on("before_agent_start", (event) => {
-    const cwd = event.systemPromptOptions?.cwd;
+    const options = event.systemPromptOptions;
+    const cwd = options?.cwd;
     if (!cwd || !isProjectInitialized(resolveProjectRoot(cwd))) return;
 
-    const contextFiles = event.systemPromptOptions?.contextFiles ?? [];
-    const alreadyLoaded = contextFiles.some(
-      (file) => typeof file.content === "string" && file.content.includes("pi-tokensave:start"),
-    );
+    // The rendered prompt already holds the block when a loaded AGENTS.md carries
+    // it, or when a subagent embeds its parent's prompt (pi-subagents append mode).
+    const contextFiles = options.contextFiles ?? [];
+    const alreadyLoaded =
+      event.systemPrompt.includes(RULES_MARKER) ||
+      contextFiles.some((file) => typeof file.content === "string" && file.content.includes(RULES_MARKER));
     if (alreadyLoaded) return;
 
-    // Not yet present in any loaded context file for this run (e.g. Pi
-    // loaded context before installRulesBlock() ran, or AGENTS.md hasn't
-    // been re-read since). Inject for this turn and try again on the next
-    // run — do not gate on a one-shot session flag.
+    // Not yet present: Pi loaded context before installRulesBlock() ran, or the
+    // session loads no context files (pi-subagents children). Inject for this run
+    // and check again on the next one; do not gate on a one-shot session flag.
+    //
+    // A named section leaves the rest of the prompt structured. Returning a full
+    // `systemPrompt` would replace the prompt for the whole run instead. That
+    // fallback remains for hosts without sections, and for a prompt an earlier
+    // handler already replaced, because a replaced prompt ignores sections.
+    if (options.sections && options.forceSystemPrompt === undefined) {
+      options.sections[RULES_SECTION_NAME] = buildRulesBlock();
+      return;
+    }
     return { systemPrompt: `${event.systemPrompt}\n\n${buildRulesBlock()}` };
   });
 }
