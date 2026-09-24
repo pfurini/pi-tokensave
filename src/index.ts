@@ -68,7 +68,10 @@ export default function pluginTokensave(pi: ExtensionAPI): void {
     // The global block is conditional on .tokensave presence, so it is safe to
     // refresh for every session even though AGENTS.md is shared by all projects.
     installRulesBlock();
-    await branchReconciliation.run(ctx);
+    // A sync after long drift can take seconds, so session start does not wait
+    // for it. A TokenSave tool call joins the reconciliation still in flight.
+    // The catch covers a ctx made stale by a session switch before it settles.
+    void branchReconciliation.run(ctx).catch(() => {});
   });
 
   registerTokensaveTools(pi, () => state);

@@ -160,7 +160,7 @@ test("tool_call in prefer mode does not recommend a TokenSave tool when the bina
   }
 });
 
-test("autoManageBranches reconciles on session start and before a TokenSave tool after refs change", async () => {
+test("autoManageBranches starts reconciling at session start without blocking it, and a TokenSave tool waits for it", async () => {
   const fakeHome = mkdtempSync(join(tmpdir(), "pi-tokensave-home-"));
   mkdirSync(join(fakeHome, ".pi", "agent"), { recursive: true });
   writeFileSync(
@@ -172,14 +172,22 @@ test("autoManageBranches reconciles on session start and before a TokenSave tool
   process.env.HOME = fakeHome;
 
   const tokensaveCommands: string[][] = [];
+  let releaseSync: (() => void) | undefined;
+  let holdSync = true;
   setExecFileImplForTest((_file, args: string[], _options, cb: Cb) => {
     if (args[0] !== "--version") tokensaveCommands.push(args);
+    if (args[0] === "sync" && holdSync) {
+      releaseSync = () => cb(null, "ok", "");
+      return {};
+    }
     cb(null, args[0] === "--version" ? "tokensave 7.4.0" : "ok", "");
     return {};
   });
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+  const steps = () => tokensaveCommands.map((args) => (args[0] === "branch" ? `branch ${args[1]}` : args[0]));
 
   try {
-    let refs = "*\tmain";
+    let refs = `*\trefs/heads/main\t${"a".repeat(40)}`;
     const pi = fakePi();
     pi.exec = async () => ({ code: 0, stdout: refs, stderr: "", killed: false });
     pluginTokensave(pi);
@@ -188,17 +196,27 @@ test("autoManageBranches reconciles on session start and before a TokenSave tool
     const ctx = { cwd: projectDir, ui: { notify: () => {} } };
 
     await pi.handlers.session_start({}, ctx);
-    assert.deepEqual(
-      tokensaveCommands.map((args) => args.slice(0, 2)),
-      [["branch", "add"], ["branch", "gc"]],
-    );
+    await flush();
+    assert.deepEqual(steps(), ["branch add", "sync"], "session start returns while the sync still runs");
+
+    let toolCallSettled = false;
+    const toolCall = Promise.resolve(pi.handlers.tool_call({ toolName: "tokensave_status", input: {} }, ctx)).then(() => {
+      toolCallSettled = true;
+    });
+    await flush();
+    assert.equal(toolCallSettled, false, "a TokenSave tool call waits for the reconciliation in flight");
+
+    holdSync = false;
+    releaseSync?.();
+    await toolCall;
+    assert.deepEqual(steps(), ["branch add", "sync", "branch gc"], "the tool call joins the run instead of starting another");
 
     await pi.handlers.tool_call({ toolName: "tokensave_status", input: {} }, ctx);
-    assert.equal(tokensaveCommands.length, 2, "unchanged refs should stay cached");
+    assert.equal(tokensaveCommands.length, 3, "unchanged refs should stay cached");
 
-    refs = " \tmain\n*\tfeature/new";
+    refs = `*\trefs/heads/main\t${"b".repeat(40)}`;
     await pi.handlers.tool_call({ toolName: "tokensave_status", input: {} }, ctx);
-    assert.equal(tokensaveCommands.length, 4, "a branch change should reconcile before the tool runs");
+    assert.equal(tokensaveCommands.length, 6, "a new commit should sync before the tool runs");
   } finally {
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;

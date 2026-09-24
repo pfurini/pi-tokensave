@@ -98,15 +98,27 @@ Settings are persisted to `~/.pi/agent/pi-tokensave.json` (never inside the proj
 
 ## Pi-managed branch indexes
 
-When `autoManageBranches` is `true`, the extension reconciles TokenSave indexes at
-session start and before a TokenSave tool call whenever the local branch set or
-current branch changed. It runs `tokensave branch add` for the checked-out branch
-and `tokensave branch gc` to remove indexes for deleted local branches.
+When `autoManageBranches` is `true`, the extension keeps TokenSave indexes aligned
+with local Git state. It reconciles whenever a local branch is created, checked out,
+renamed, deleted, or moved to a new commit:
 
-The extension fingerprints local branch refs, so unchanged tool calls do not spawn
-additional TokenSave commands. This automation runs only while Pi is active; branch
-changes made elsewhere are reconciled when the next Pi session starts or TokenSave
-tool runs.
+- `tokensave branch add` tracks the checked-out branch.
+- `tokensave sync` refreshes the checked-out branch index.
+- `tokensave branch gc` removes indexes of deleted local branches.
+
+The sync step does the work of TokenSave's `post-commit` git hook. That hook never
+runs in a repository that sets its own `core.hooksPath` (husky, for example), so
+without this step the index stays at the last manual sync.
+
+Reconciliation starts at session start without delaying it. A TokenSave tool call
+waits for a reconciliation in progress, and starts one when the branch names or
+tips changed since the last run. Unchanged refs cost one `git branch` call and no
+TokenSave process. When another process already holds TokenSave's sync lock, the
+extension skips the step silently and retries at the next TokenSave tool call.
+
+This automation runs only while Pi is active. Git changes made elsewhere are
+reconciled when the next Pi session starts or TokenSave tool runs. Uncommitted edits
+are not synced; run `/tokensave-sync` for those.
 
 ## Instructions block
 

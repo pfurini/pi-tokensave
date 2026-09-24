@@ -1,6 +1,14 @@
 import { runTokensaveCommand } from "./runner.ts";
 
 const GIT_TIMEOUT_MS = 5_000;
+/**
+ * An incremental sync after weeks of drift takes about 15s on a large
+ * repository. The ceiling only guards against a hung process: TokenSave
+ * recovers the lock of a killed sync on its next run.
+ */
+const SYNC_TIMEOUT_MS = 120_000;
+/** TokenSave refuses to start while another process (a git hook, another session) syncs. */
+const SYNC_LOCK_PATTERN = /another sync is already in progress/i;
 
 export interface BranchReconciliationResult {
 	reconciled: boolean;
@@ -24,10 +32,13 @@ export interface BranchIndexLifecycle {
 }
 
 /**
- * Reconciles TokenSave's tracked indexes with local Git branches.
+ * Reconciles TokenSave's indexes with local Git state, doing the work of
+ * TokenSave's post-checkout and post-commit hooks. Those hooks never run in a
+ * repository that overrides `core.hooksPath` (husky, for example).
  *
- * A stable fingerprint avoids invoking TokenSave before every tool call while
- * still detecting branch creation, checkout, rename, and deletion.
+ * The fingerprint covers every local branch name and tip commit, so it changes
+ * on branch creation, checkout, rename, deletion, and commit. An unchanged
+ * fingerprint costs one `git branch` call and no TokenSave process.
  */
 export function createBranchIndexLifecycle(): BranchIndexLifecycle {
 	const fingerprints = new Map<string, string>();
@@ -42,7 +53,7 @@ export function createBranchIndexLifecycle(): BranchIndexLifecycle {
 			[
 				"branch",
 				"--no-color",
-				"--format=%(HEAD)%09%(refname:short)",
+				"--format=%(HEAD)%09%(refname)%09%(objectname)",
 				"--sort=refname",
 			],
 			{ cwd: projectRoot, timeout: GIT_TIMEOUT_MS },
@@ -56,33 +67,42 @@ export function createBranchIndexLifecycle(): BranchIndexLifecycle {
 			return { reconciled: false, warnings: [] };
 		}
 
-		const hasCurrentBranch = fingerprint
+		// A detached HEAD (rebase, bisect) also prints a `*` line, but its refname
+		// is `(HEAD detached at ...)`. It has no branch index to add or sync.
+		const onBranch = fingerprint
 			.split("\n")
-			.some((line) => line.startsWith("*\t"));
+			.some((line) => line.startsWith("*\trefs/heads/"));
 		const warnings: string[] = [];
+		let lockContended = false;
 
-		if (hasCurrentBranch) {
-			const add = await runTokensaveCommand(
-				["branch", "add", "--path", projectRoot],
-				projectRoot,
-			);
-			if (!add.ok)
-				warnings.push(
-					add.stderr || add.stdout || "tokensave branch add failed",
-				);
+		async function runStep(args: string[], timeoutMs?: number): Promise<boolean> {
+			const result = await runTokensaveCommand(args, projectRoot, timeoutMs);
+			if (result.ok) return true;
+			const label = `tokensave ${args[0]}${args[0] === "branch" ? ` ${args[1]}` : ""}`;
+			const output = result.stderr || result.stdout;
+			if (SYNC_LOCK_PATTERN.test(output)) {
+				// Another process is already syncing: retry at the next tool call.
+				lockContended = true;
+			} else if (result.errorKind === "timeout") {
+				warnings.push(`${label} timed out.`);
+			} else {
+				warnings.push(output || `${label} failed`);
+			}
+			return false;
 		}
 
-		const gc = await runTokensaveCommand(
-			["branch", "gc", "--path", projectRoot],
-			projectRoot,
-		);
-		if (!gc.ok)
-			warnings.push(gc.stderr || gc.stdout || "tokensave branch gc failed");
+		// `branch add` is a no-op for a tracked branch, so `sync` refreshes the
+		// checked-out branch index after a commit made outside TokenSave's hooks.
+		if (onBranch && (await runStep(["branch", "add", "--path", projectRoot]))) {
+			await runStep(["sync", projectRoot], SYNC_TIMEOUT_MS);
+		}
+		await runStep(["branch", "gc", "--path", projectRoot]);
 
-		if (warnings.length === 0) {
+		const reconciled = warnings.length === 0 && !lockContended;
+		if (reconciled) {
 			fingerprints.set(projectRoot, fingerprint);
 		}
-		return { reconciled: warnings.length === 0, warnings };
+		return { reconciled, warnings };
 	}
 
 	return {
