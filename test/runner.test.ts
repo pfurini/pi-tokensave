@@ -5,6 +5,7 @@ import {
   runTokensaveCommand,
   runTokensaveTool,
   setExecFileImplForTest,
+  stripImageBanner,
 } from "../src/runner.ts";
 
 type Cb = (error: (NodeJS.ErrnoException & { killed?: boolean; signal?: string }) | null, stdout: string, stderr: string) => void;
@@ -294,4 +295,34 @@ test("runTokensaveCommand does not truncate output within the bound", async () =
   const result = await runTokensaveCommand(["status"], "/tmp");
   assert.equal(result.stdout, "short output");
   assert.ok(!/truncated/i.test(result.stdout));
+});
+
+// ---------------------------------------------------------------------------
+// Image banner (TokenSave 7.12 `status`)
+// ---------------------------------------------------------------------------
+
+const STATUS_BOX = [
+  "╭──────────────────────────╮",
+  "│    TokenSave v7.12.1     │",
+  "├────────────┬─────────────┤",
+  "│ Files  1,513 │ Nodes 31,731 │",
+  "╰────────────┴─────────────╯",
+].join("\n");
+
+test("stripImageBanner drops half-block rows and keeps the box-drawn stats", () => {
+  const banner = ["   ▄▄▀▀▄  ▄", "▀▀▄▄▄▀▀▀▄▄   ", "  ▄  "].join("\n");
+  assert.equal(stripImageBanner(`${banner}\n${STATUS_BOX}`), STATUS_BOX);
+  assert.equal(stripImageBanner("✔ sync done — 3 added\n\nFiles 1,513"), "✔ sync done — 3 added\n\nFiles 1,513");
+});
+
+test("runTokensaveCommand removes the coloured image banner from status output", async () => {
+  // Two banner rows as TokenSave prints them: 24-bit colour codes around half blocks.
+  const bannerRow = "\u001b[49m \u001b[38;2;33;25;35;49m▄\u001b[38;2;24;11;25;48;2;33;26;12m▄\u001b[49;38;2;29;27;35m▀\u001b[m";
+  setExecFileImplForTest((_file, _args, _options, cb: Cb) => {
+    cb(null, `${bannerRow}\n${bannerRow}\n\u001b[32m${STATUS_BOX}\u001b[0m\n`, "");
+    return {};
+  });
+
+  const result = await runTokensaveCommand(["status", "/repo"], "/repo");
+  assert.equal(result.stdout, STATUS_BOX);
 });

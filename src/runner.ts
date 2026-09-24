@@ -251,7 +251,8 @@ function boundOutput(text: string, maxChars: number): string {
 /**
  * Runs a plain `tokensave <subcommand> [args...]` invocation (init/sync/
  * doctor) rather than the `tool` subcommand. No --json is used because
- * these subcommands do not support it; output is ANSI-stripped for display.
+ * these subcommands do not support it; output is ANSI-stripped for display,
+ * and the image banner is dropped before the output is bounded.
  */
 export async function runTokensaveCommand(
   args: string[],
@@ -270,7 +271,7 @@ export async function runTokensaveCommand(
     ));
   });
 
-  const clean = (text: string) => boundOutput(stripAnsi(text).trim(), maxOutputChars);
+  const clean = (text: string) => boundOutput(stripImageBanner(stripAnsi(text)).trim(), maxOutputChars);
 
   if (error) {
     if (error.code === "ENOENT") {
@@ -294,6 +295,22 @@ export async function runTokensaveCommand(
 function stripAnsi(text: string): string {
   // biome-ignore lint: intentional control-character strip for terminal escape sequences
   return text.replace(/[\u001B\u009B][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, "");
+}
+
+/** A line drawn only with Unicode block elements (U+2580–U+259F), such as `▄` and `▀`. */
+const IMAGE_BANNER_LINE = /^\s*[\u2580-\u259F][\u2580-\u259F\s]*$/;
+
+/**
+ * TokenSave 7.12 prints an image banner above `status` with no flag to turn it
+ * off. Its colours carry the picture, so once ANSI codes are stripped only rows
+ * of half-block glyphs remain. Box-drawing characters (U+2500–U+257F) and
+ * progress spinners fall outside the block range, so the stats box survives.
+ */
+export function stripImageBanner(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => !IMAGE_BANNER_LINE.test(line))
+    .join("\n");
 }
 
 export type TokensaveAvailabilityReason = "not_found" | "timeout" | "permission_denied" | "failed";
