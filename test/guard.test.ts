@@ -68,6 +68,25 @@ test("enforce mode blocks the built-in grep tool equivalent", () => {
   assert.equal(decision.block, true);
 });
 
+test("enforce mode blocks the anchor_grep tool like the built-in grep", () => {
+  const decision = evaluateGuard(
+    baseParams({ toolName: "anchor_grep", input: { pattern: "class WellModel", path: "src" } }),
+  );
+  assert.equal(decision.block, true);
+  assert.equal(decision.candidate, "WellModel");
+});
+
+test("enforce mode allows anchor_grep over config files and complex regex", () => {
+  assert.equal(
+    evaluateGuard(baseParams({ toolName: "anchor_grep", input: { pattern: "WellModel", glob: "*.yaml" } })).block,
+    false,
+  );
+  assert.equal(
+    evaluateGuard(baseParams({ toolName: "anchor_grep", input: { pattern: "^(foo|bar)\\d+$" } })).block,
+    false,
+  );
+});
+
 test("enforce mode allows search after TokenSave was consulted for that symbol", () => {
   const decision = evaluateGuard(
     baseParams({ input: { command: 'rg "WellModel" .' }, wasConsulted: (c) => c === "WellModel" }),

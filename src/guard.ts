@@ -1,7 +1,9 @@
 /**
- * Enforce-mode guard: intercepts built-in `grep`/`find` tool calls and plain
- * `bash` invocations of rg/grep/ag/ack/find, and blocks them when they look
- * like named-symbol discovery that should go through TokenSave first.
+ * Enforce-mode guard: intercepts built-in `grep`/`find` tool calls, the
+ * `anchor_grep` tool from pi-hashline-edit-pro (which replaces `grep` in
+ * sessions that load it), and plain `bash` invocations of rg/grep/ag/ack/find,
+ * and blocks them when they look like named-symbol discovery that should go
+ * through TokenSave first.
  *
  * Deliberately conservative: only blocks a narrow, high-confidence pattern.
  * Everything else (complex regex, pipelines, git grep, logs, config files,
@@ -104,10 +106,11 @@ export function extractBashSearchCandidate(command: string): string | undefined 
   return undefined;
 }
 
-export type GuardableToolName = "bash" | "grep" | "find";
+/** `anchor_grep` takes the same `pattern`/`path`/`glob` input as `grep`. */
+export type GuardableToolName = "bash" | "grep" | "find" | "anchor_grep";
 
 /**
- * Extracts a symbol-search candidate from a `bash`/`grep`/`find` tool_call
+ * Extracts a symbol-search candidate from a guarded tool_call
  * input, independent of mode or TokenSave availability. Returns undefined
  * when the call does not look like named-symbol discovery.
  */

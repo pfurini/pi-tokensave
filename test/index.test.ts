@@ -120,6 +120,34 @@ test("guarded tool calls do not probe the TokenSave binary outside initialized p
 
 test.afterEach(() => setExecFileImplForTest(undefined));
 
+test("enforce mode blocks a symbol search through anchor_grep but allows a config-file search", async () => {
+  const fakeHome = mkdtempSync(join(tmpdir(), "pi-tokensave-home-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = fakeHome;
+  setExecFileImplForTest((_file, _args: string[], _options, cb: Cb) => {
+    cb(null, "tokensave 7.12.1", "");
+    return {};
+  });
+
+  try {
+    const pi = fakePi();
+    pluginTokensave(pi);
+    const ctx = { cwd: initializedProjectDir(), ui: { notify: () => {} } };
+
+    const blocked = await pi.handlers.tool_call({ toolName: "anchor_grep", input: { pattern: "WellModel" } }, ctx);
+    assert.equal(blocked?.block, true);
+
+    const config = await pi.handlers.tool_call(
+      { toolName: "anchor_grep", input: { pattern: "WellModel", path: "config/app.yaml" } },
+      ctx,
+    );
+    assert.equal(config, undefined);
+  } finally {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+  }
+});
+
 test("tool_call in prefer mode does not recommend a TokenSave tool when the binary is unavailable (ENOENT)", async () => {
   // Force pi-tokensave's persisted mode ('prefer') to load from an isolated
   // fake home directory instead of the real ~/.pi/agent/pi-tokensave.json.

@@ -16,7 +16,7 @@ import { buildRulesBlock, installRulesBlock } from "./rules.ts";
 import { createSessionState, loadPersistedConfig, wasCandidateConsulted, type TokensaveSessionState } from "./state.ts";
 import { registerTokensaveTools } from "./tools.ts";
 
-const GUARDED_TOOLS = new Set<GuardableToolName>(["bash", "grep", "find"]);
+const GUARDED_TOOLS = new Set<GuardableToolName>(["bash", "grep", "find", "anchor_grep"]);
 const TOKENSAVE_TOOL_PREFIX = "tokensave_";
 
 function createBranchReconciliation(

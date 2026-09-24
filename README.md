@@ -96,6 +96,10 @@ Settings are persisted to `~/.pi/agent/pi-tokensave.json` (never inside the proj
   initialized projects, and may emit a single short notice per session when it
   sees manual exploration that TokenSave could have served instead.
 
+Both modes inspect the `bash`, `grep`, and `find` tools, plus the `anchor_grep` tool
+from [pi-hashline-edit-pro](https://www.npmjs.com/package/pi-hashline-edit-pro),
+which replaces `grep` in sessions that load it.
+
 ## Pi-managed branch indexes
 
 When `autoManageBranches` is `true`, the extension keeps TokenSave indexes aligned
