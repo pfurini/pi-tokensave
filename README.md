@@ -102,6 +102,14 @@ Both modes inspect the `bash`, `grep`, and `find` tools, plus the `anchor_grep` 
 from [pi-hashline-edit-pro](https://www.npmjs.com/package/pi-hashline-edit-pro),
 which replaces `grep` in sessions that load it.
 
+Both modes stand down in a session where `tokensave_find_symbol` is not an active
+tool, because the block message and the notice point at it. The rules block is
+likewise injected only when at least one `tokensave_*` tool is active. This covers
+[pi-subagents](https://github.com/tintinweb/pi-subagents) agents whose `tools:` list
+or `ext:` selectors leave pi-tokensave's tools out. A skill's `disallowed-tools` is
+not visible to extensions: while such a skill runs, switch to `prefer` mode if it
+disallows the TokenSave tools.
+
 ## Pi-managed branch indexes
 
 When `autoManageBranches` is `true`, the extension keeps TokenSave indexes aligned

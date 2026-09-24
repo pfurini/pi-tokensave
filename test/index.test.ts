@@ -35,6 +35,11 @@ function fakePi() {
     registerCommand(name: string, def: any) {
       commands[name] = def;
     },
+    // Pi activates registered extension tools by default; tests override this for
+    // sessions that leave them out (pi-subagents `tools:` lists, `ext:` selectors).
+    getActiveTools() {
+      return ["read", "bash", "edit", "write", ...Object.keys(tools)];
+    },
   } as unknown as ExtensionAPI & { handlers: Record<string, Handler> };
 }
 
@@ -188,6 +193,56 @@ test("enforce mode blocks a symbol search through anchor_grep but allows a confi
       ctx,
     );
     assert.equal(config, undefined);
+  } finally {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+  }
+});
+
+test("a session without active TokenSave tools gets neither the guard nor the rules", async () => {
+  let processCount = 0;
+  setExecFileImplForTest((_file, _args: string[], _options, cb: Cb) => {
+    processCount += 1;
+    cb(null, "tokensave 7.12.1", "");
+    return {};
+  });
+
+  // A pi-subagents child with `tools: read, bash`: pi-tokensave loads, its tools stay inactive.
+  const pi = fakePi();
+  pi.getActiveTools = () => ["read", "bash"];
+  pluginTokensave(pi);
+  const projectDir = initializedProjectDir();
+
+  const search = await pi.handlers.tool_call(
+    { toolName: "bash", input: { command: 'rg "WellModel" .' } },
+    { cwd: projectDir, ui: { notify: () => {} } },
+  );
+  assert.equal(search, undefined, "the block would point at a tool the session cannot call");
+  assert.equal(processCount, 0, "no binary probe either");
+
+  const event = { prompt: "hello", systemPrompt: "base prompt", systemPromptOptions: sectionedPromptOptions(projectDir) };
+  assert.equal(await pi.handlers.before_agent_start(event, {}), undefined);
+  assert.deepEqual(event.systemPromptOptions.sections, {});
+});
+
+test("the guard needs only tokensave_find_symbol among the TokenSave tools", async () => {
+  const previousHome = process.env.HOME;
+  process.env.HOME = mkdtempSync(join(tmpdir(), "pi-tokensave-home-"));
+  setExecFileImplForTest((_file, _args: string[], _options, cb: Cb) => {
+    cb(null, "tokensave 7.12.1", "");
+    return {};
+  });
+
+  try {
+    // A pi-subagents child with `tools: bash, ext:pi-tokensave/tokensave_find_symbol`.
+    const pi = fakePi();
+    pi.getActiveTools = () => ["bash", "tokensave_find_symbol"];
+    pluginTokensave(pi);
+    const blocked = await pi.handlers.tool_call(
+      { toolName: "bash", input: { command: 'rg "WellModel" .' } },
+      { cwd: initializedProjectDir(), ui: { notify: () => {} } },
+    );
+    assert.equal(blocked?.block, true);
   } finally {
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;

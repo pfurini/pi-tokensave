@@ -29,6 +29,15 @@ const RULES_MARKER = "pi-tokensave:start";
 /** Rendered as `<tokensave>...</tokensave>` in the system prompt. */
 const RULES_SECTION_NAME = "tokensave";
 
+/**
+ * Whether the current session can call a matching tool. A pi-subagents child can
+ * load this extension yet leave its tools inactive (`tools:` lists, `ext:`
+ * selectors), so the guard and the rules must not assume them.
+ */
+function hasActiveTool(pi: ExtensionAPI, matches: (name: string) => boolean): boolean {
+  return pi.getActiveTools().some(matches);
+}
+
 function createBranchReconciliation(
   pi: ExtensionAPI,
   getConfig: () => { autoManageBranches: boolean },
@@ -106,6 +115,8 @@ export default function pluginTokensave(pi: ExtensionAPI): void {
 
     const root = resolveProjectRoot(ctx.cwd);
     if (!isProjectInitialized(root)) return;
+    // Both the block reason and the prefer-mode notice point at this tool.
+    if (!hasActiveTool(pi, (name) => name === "tokensave_find_symbol")) return;
 
     if (state.binaryAvailable === undefined) {
       state.binaryAvailable = await checkTokensaveAvailable();
@@ -134,6 +145,8 @@ export default function pluginTokensave(pi: ExtensionAPI): void {
     const options = event.systemPromptOptions;
     const cwd = options?.cwd;
     if (!cwd || !isProjectInitialized(resolveProjectRoot(cwd))) return;
+    // Rules that mandate TokenSave tools only mislead a session that cannot call them.
+    if (!hasActiveTool(pi, (name) => name.startsWith(TOKENSAVE_TOOL_PREFIX))) return;
 
     // The rendered prompt already holds the block when a loaded AGENTS.md carries
     // it, or when a subagent embeds its parent's prompt (pi-subagents append mode).
