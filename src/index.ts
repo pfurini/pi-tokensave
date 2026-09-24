@@ -145,17 +145,15 @@ export default function pluginTokensave(pi: ExtensionAPI): void {
 
   pi.on("before_agent_start", (event) => {
     const options = event.systemPromptOptions;
-    const cwd = options?.cwd;
-    if (!cwd || !isProjectInitialized(resolveProjectRoot(cwd))) return;
+    if (!isProjectInitialized(resolveProjectRoot(options.cwd))) return;
     // Rules that mandate TokenSave tools only mislead a session that cannot call them.
     if (!hasActiveTool(pi, (name) => name.startsWith(TOKENSAVE_TOOL_PREFIX))) return;
 
     // The rendered prompt already holds the block when a loaded AGENTS.md carries
     // it, or when a subagent embeds its parent's prompt (pi-subagents append mode).
-    const contextFiles = options.contextFiles ?? [];
     const alreadyLoaded =
       event.systemPrompt.includes(RULES_MARKER) ||
-      contextFiles.some((file) => typeof file.content === "string" && file.content.includes(RULES_MARKER));
+      options.contextFiles.some((file) => file.content.includes(RULES_MARKER));
     if (alreadyLoaded) return;
 
     // Not yet present: Pi loaded context before installRulesBlock() ran, or the
@@ -164,9 +162,9 @@ export default function pluginTokensave(pi: ExtensionAPI): void {
     //
     // A named section leaves the rest of the prompt structured. Returning a full
     // `systemPrompt` would replace the prompt for the whole run instead. That
-    // fallback remains for hosts without sections, and for a prompt an earlier
-    // handler already replaced, because a replaced prompt ignores sections.
-    if (options.sections && options.forceSystemPrompt === undefined) {
+    // fallback remains only for a prompt an earlier handler already replaced,
+    // because a replaced prompt ignores sections.
+    if (options.forceSystemPrompt === undefined) {
       options.sections[RULES_SECTION_NAME] = buildRulesBlock();
       return;
     }

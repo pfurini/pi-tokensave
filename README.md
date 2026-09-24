@@ -7,7 +7,9 @@ pi-tokensave registers native Pi tools and invokes the local TokenSave CLI direc
 
 ## Requirements
 
-- Pi (`@earendil-works/pi-coding-agent`), current version.
+- Pi 0.87.0 or newer (`@earendil-works/pi-coding-agent`), such as the
+  [pfurini/pi](https://github.com/pfurini/pi) fork. The `peerDependencies` range
+  declares the floor, so npm flags an older Pi at install time.
 - The `tokensave` binary on `PATH` (or `TOKENSAVE_BIN` pointing to it).
 
 ## Install TokenSave
@@ -72,8 +74,9 @@ is stated in every tool's guidelines and in the injected instructions.
 ```
 
 Settings are persisted to `pi-tokensave.json` in Pi's agent directory, never inside
-the project. The agent directory is `~/.pi/agent` unless `PI_CODING_AGENT_DIR` or an
-SDK session created with its own `agentDir` points elsewhere:
+the project. The agent directory is `~/.pi/agent` unless `PI_CODING_AGENT_DIR` points
+elsewhere. On the Pi fork, an SDK session created with its own `agentDir` uses that
+directory instead:
 
 ```json
 {
@@ -153,8 +156,8 @@ When the system prompt of a run does not already contain the block, the extensio
 adds it through `before_agent_start` as a `<tokensave>` prompt section. That covers
 the first session after installation (Pi read `AGENTS.md` before the block existed)
 and subagent sessions, which load no `AGENTS.md`. A section leaves the rest of the
-prompt intact. On hosts without prompt sections, or when an earlier extension already
-replaced the whole prompt, the block is appended to the prompt text instead.
+prompt intact. When an earlier extension already replaced the whole prompt, the
+block is appended to the prompt text instead.
 Injection happens only when `.tokensave/` exists, so uninitialized projects neither
 probe the TokenSave binary nor change the normal exploration workflow.
 

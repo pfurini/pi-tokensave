@@ -43,8 +43,9 @@ function fakePi() {
   } as unknown as ExtensionAPI & { handlers: Record<string, Handler> };
 }
 
-function baseSystemPromptOptions(cwd: string, contextFiles: Array<{ path: string; content: string }> = []) {
-  return { cwd, contextFiles };
+/** Pi 0.87's normalized prompt options: `contextFiles` and `sections` are always present. */
+function promptOptions(cwd: string, contextFiles: Array<{ path: string; content: string }> = []) {
+  return { cwd, contextFiles, sections: {} as Record<string, string>, forceSystemPrompt: undefined as string | undefined };
 }
 
 function initializedProjectDir(): string {
@@ -58,21 +59,15 @@ test("before_agent_start injects the rules block when absent from loaded context
   pluginTokensave(pi);
   const projectDir = initializedProjectDir();
 
-  const event1 = {
-    prompt: "hello",
-    systemPrompt: "base prompt",
-    systemPromptOptions: baseSystemPromptOptions(projectDir, [{ path: "/AGENTS.md", content: "unrelated instructions" }]),
-  };
-  const result1 = await pi.handlers.before_agent_start(event1, {});
-  assert.ok(result1?.systemPrompt.includes("pi-tokensave:start"));
-
-  const event2 = {
-    prompt: "hello again",
-    systemPrompt: "base prompt",
-    systemPromptOptions: baseSystemPromptOptions(projectDir, [{ path: "/AGENTS.md", content: "unrelated instructions" }]),
-  };
-  const result2 = await pi.handlers.before_agent_start(event2, {});
-  assert.ok(result2?.systemPrompt.includes("pi-tokensave:start"));
+  for (const prompt of ["hello", "hello again"]) {
+    const event = {
+      prompt,
+      systemPrompt: "base prompt",
+      systemPromptOptions: promptOptions(projectDir, [{ path: "/AGENTS.md", content: "unrelated instructions" }]),
+    };
+    await pi.handlers.before_agent_start(event, {});
+    assert.ok(event.systemPromptOptions.sections.tokensave?.includes("pi-tokensave:start"), prompt);
+  }
 });
 
 test("before_agent_start does not duplicate injection once a loaded context file already contains the block", async () => {
@@ -83,7 +78,7 @@ test("before_agent_start does not duplicate injection once a loaded context file
   const event = {
     prompt: "hello",
     systemPrompt: "base prompt",
-    systemPromptOptions: baseSystemPromptOptions(projectDir, [
+    systemPromptOptions: promptOptions(projectDir, [
       { path: "/AGENTS.md", content: "some text\n<!-- pi-tokensave:start -->\nalready loaded\n<!-- pi-tokensave:end -->\n" },
     ]),
   };
@@ -99,22 +94,17 @@ test("before_agent_start skips rule injection outside TokenSave projects", async
   const event = {
     prompt: "hello",
     systemPrompt: "base prompt",
-    systemPromptOptions: baseSystemPromptOptions(projectDir),
+    systemPromptOptions: promptOptions(projectDir),
   };
 
   const result = await pi.handlers.before_agent_start(event, {});
   assert.equal(result, undefined);
 });
 
-/** Mirrors the fork's normalized prompt options: collections are always present. */
-function sectionedPromptOptions(cwd: string) {
-  return { cwd, contextFiles: [], sections: {} as Record<string, string>, forceSystemPrompt: undefined as string | undefined };
-}
-
 test("before_agent_start adds the rules as a prompt section instead of replacing the prompt", async () => {
   const pi = fakePi();
   pluginTokensave(pi);
-  const event = { prompt: "hello", systemPrompt: "base prompt", systemPromptOptions: sectionedPromptOptions(initializedProjectDir()) };
+  const event = { prompt: "hello", systemPrompt: "base prompt", systemPromptOptions: promptOptions(initializedProjectDir()) };
 
   const result = await pi.handlers.before_agent_start(event, {});
   assert.equal(result, undefined, "no systemPrompt override");
@@ -124,7 +114,7 @@ test("before_agent_start adds the rules as a prompt section instead of replacing
 test("before_agent_start appends to the text when an earlier handler already replaced the prompt", async () => {
   const pi = fakePi();
   pluginTokensave(pi);
-  const systemPromptOptions = sectionedPromptOptions(initializedProjectDir());
+  const systemPromptOptions = promptOptions(initializedProjectDir());
   systemPromptOptions.forceSystemPrompt = "replaced prompt";
   const event = { prompt: "hello", systemPrompt: "replaced prompt", systemPromptOptions };
 
@@ -141,7 +131,7 @@ test("before_agent_start does not inject twice when the prompt embeds a parent p
   const event = {
     prompt: "hello",
     systemPrompt: "You are Appender.\n\n<!-- pi-tokensave:start -->\nrules\n<!-- pi-tokensave:end -->",
-    systemPromptOptions: sectionedPromptOptions(initializedProjectDir()),
+    systemPromptOptions: promptOptions(initializedProjectDir()),
   };
 
   const result = await pi.handlers.before_agent_start(event, {});
@@ -220,7 +210,7 @@ test("a session without active TokenSave tools gets neither the guard nor the ru
   assert.equal(search, undefined, "the block would point at a tool the session cannot call");
   assert.equal(processCount, 0, "no binary probe either");
 
-  const event = { prompt: "hello", systemPrompt: "base prompt", systemPromptOptions: sectionedPromptOptions(projectDir) };
+  const event = { prompt: "hello", systemPrompt: "base prompt", systemPromptOptions: promptOptions(projectDir) };
   assert.equal(await pi.handlers.before_agent_start(event, {}), undefined);
   assert.deepEqual(event.systemPromptOptions.sections, {});
 });

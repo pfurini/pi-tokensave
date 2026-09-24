@@ -1,10 +1,11 @@
 /**
  * Resolves the Pi agent configuration directory that backs the current session.
  *
- * Hosts that expose `agentDir` on the extension API and context report the
- * directory of the session loading the extension. That directory differs from
- * the global one for sessions created with an explicit `agentDir`. Hosts without
- * the field fall back to the resolution of Pi's own `getAgentDir()`.
+ * The Pi fork (github.com/pfurini/pi) exposes `agentDir` on the extension API and
+ * context: the directory of the session loading the extension. That directory
+ * differs from the global one for sessions created with an explicit `agentDir`.
+ * Upstream Pi 0.87 has no such field; there the extension falls back to the
+ * resolution of Pi's own `getAgentDir()`.
  */
 
 import { homedir } from "node:os";
@@ -14,7 +15,7 @@ const AGENT_DIR_ENV = "PI_CODING_AGENT_DIR";
 
 /**
  * `source` is the extension API (at load time) or an event context. Reading
- * `agentDir` structurally keeps the extension working on hosts without it.
+ * `agentDir` structurally keeps the extension working on upstream Pi.
  */
 export function resolveAgentDir(source?: object): string {
   const reported = (source as { agentDir?: unknown } | undefined)?.agentDir;

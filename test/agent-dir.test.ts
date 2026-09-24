@@ -24,7 +24,7 @@ test("resolveAgentDir prefers the agentDir the host reports", () => {
   });
 });
 
-test("resolveAgentDir falls back to PI_CODING_AGENT_DIR on hosts without agentDir", () => {
+test("resolveAgentDir falls back to PI_CODING_AGENT_DIR on upstream Pi, which has no agentDir", () => {
   withAgentDirEnv("/env/agent", () => {
     assert.equal(resolveAgentDir({}), "/env/agent");
     assert.equal(resolveAgentDir(), "/env/agent");

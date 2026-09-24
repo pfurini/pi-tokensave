@@ -34,14 +34,14 @@
     "url": "git+https://github.com/dan-developer/pi-tokensave.git"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": ">=0.87.0",
+    "@earendil-works/pi-ai": ">=0.87.0",
     "typebox": "*"
   },
   "dependencies": {},
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.80.6",
-    "@earendil-works/pi-ai": "*",
-    "typebox": "*"
+    "@earendil-works/pi-coding-agent": "0.87.1",
+    "@earendil-works/pi-ai": "0.87.1",
+    "typebox": "1.3.27"
   }
 }
