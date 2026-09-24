@@ -8,7 +8,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { resolveAgentDir } from "./agent-dir.ts";
-import { createBranchIndexLifecycle } from "./branch-lifecycle.ts";
+import { createBranchIndexLifecycle, sharedReconciliationStore } from "./branch-lifecycle.ts";
 import { registerTokensaveCommands } from "./commands.ts";
 import { detectSearchCandidate, evaluateGuard, type GuardableToolName } from "./guard.ts";
 import { isProjectInitialized, resolveProjectRoot } from "./project.ts";
@@ -43,12 +43,14 @@ function createBranchReconciliation(
   getConfig: () => { autoManageBranches: boolean },
   getState: () => TokensaveSessionState,
 ) {
-  const lifecycle = createBranchIndexLifecycle();
+  // Shared with every session in this process, pi-subagents children included:
+  // a child finds its parent's fingerprint and does not repeat the work.
+  const lifecycle = createBranchIndexLifecycle(sharedReconciliationStore());
   const warnedRoots = new Set<string>();
 
   return {
-    reset() {
-      lifecycle.reset();
+    /** Warn again in a new session; reconciled state stays shared. */
+    resetWarnings() {
       warnedRoots.clear();
     },
     async run(ctx: ExtensionContext): Promise<void> {
@@ -86,7 +88,7 @@ export default function pluginTokensave(pi: ExtensionAPI): void {
     const agentDir = resolveAgentDir(ctx);
     config = loadPersistedConfig(modeConfigPath(agentDir));
     state = createSessionState(config.mode);
-    branchReconciliation.reset();
+    branchReconciliation.resetWarnings();
     // The global block is conditional on .tokensave presence, so it is safe to
     // refresh for every session even though AGENTS.md is shared by all projects.
     installRulesBlock(agentsMdPath(agentDir));

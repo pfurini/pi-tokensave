@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createBranchIndexLifecycle } from "../src/branch-lifecycle.ts";
+import {
+	createBranchIndexLifecycle,
+	createReconciliationStore,
+	sharedReconciliationStore,
+} from "../src/branch-lifecycle.ts";
 import { setExecFileImplForTest } from "../src/runner.ts";
 
 type Cb = (
@@ -200,4 +204,57 @@ test("a sync timeout is reported as a warning", async () => {
 
 	assert.equal(result.reconciled, false);
 	assert.deepEqual(result.warnings, ["tokensave sync timed out."]);
+});
+
+test("lifecycles on one store skip work the other already did", async () => {
+	const commands = recordCommands();
+	const store = createReconciliationStore();
+	const pi = fakePi(() => ref("main", SHA_A, true));
+
+	await createBranchIndexLifecycle(store).reconcile(pi, "/repo");
+	assert.equal(commands.length, 3);
+
+	// A pi-subagents child: a new module instance, the same process-wide store.
+	const child = await createBranchIndexLifecycle(store).reconcile(pi, "/repo");
+	assert.equal(child.reconciled, false);
+	assert.equal(commands.length, 3, "the child finds the parent's fingerprint");
+});
+
+test("a lifecycle joins a reconciliation another one on the same store still runs", async () => {
+	const commands: string[][] = [];
+	let releaseSync: (() => void) | undefined;
+	setExecFileImplForTest((_file, args: string[], _options, cb: Cb) => {
+		commands.push(args);
+		if (args[0] === "sync") releaseSync = () => cb(null, "ok", "");
+		else cb(null, "ok", "");
+		return {};
+	});
+	const store = createReconciliationStore();
+	const pi = fakePi(() => ref("main", SHA_A, true));
+
+	const parent = createBranchIndexLifecycle(store).reconcile(pi, "/repo");
+	await new Promise((resolve) => setImmediate(resolve));
+	const child = createBranchIndexLifecycle(store).reconcile(pi, "/repo");
+	releaseSync?.();
+
+	const [parentResult, childResult] = await Promise.all([parent, child]);
+	assert.equal(parentResult, childResult, "the child awaits the parent's run");
+	assert.deepEqual(steps(commands), ["branch add", "sync", "branch gc"]);
+});
+
+test("sharedReconciliationStore returns one store per process", () => {
+	assert.equal(sharedReconciliationStore(), sharedReconciliationStore());
+});
+
+test("a git call that throws (stale session) resolves without reconciling", async () => {
+	const commands = recordCommands();
+	const stalePi = {
+		async exec(): Promise<{ code: number; stdout: string }> {
+			throw new Error("This extension ctx is stale after session replacement or reload.");
+		},
+	};
+
+	const result = await createBranchIndexLifecycle().reconcile(stalePi, "/repo");
+	assert.deepEqual(result, { reconciled: false, warnings: [] });
+	assert.equal(commands.length, 0);
 });

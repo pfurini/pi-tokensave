@@ -24,11 +24,37 @@ interface GitExecutor {
 }
 
 export interface BranchIndexLifecycle {
-	reset(): void;
 	reconcile(
 		pi: GitExecutor,
 		projectRoot: string,
 	): Promise<BranchReconciliationResult>;
+}
+
+/** Last reconciled fingerprint and the reconciliation in progress, per project root. */
+export interface ReconciliationStore {
+	fingerprints: Map<string, string>;
+	inFlight: Map<string, Promise<BranchReconciliationResult>>;
+}
+
+const SHARED_STORE_KEY = Symbol.for("pi-tokensave.branch-reconciliation.v1");
+
+export function createReconciliationStore(): ReconciliationStore {
+	return { fingerprints: new Map(), inFlight: new Map() };
+}
+
+/**
+ * The store shared by every session in this process. pi-subagents runs each
+ * child session in the parent's process. Pi calls the extension factory again
+ * for every session, and re-imports this module for a child in another cwd, so
+ * neither factory nor module state reaches the child. A registered symbol on
+ * `globalThis` does: a child skips the work its parent already did and joins a
+ * reconciliation the parent still runs. The store is keyed by project root, so
+ * a child in its own worktree still reconciles that worktree.
+ */
+export function sharedReconciliationStore(): ReconciliationStore {
+	const registry = globalThis as unknown as Record<symbol, ReconciliationStore | undefined>;
+	registry[SHARED_STORE_KEY] ??= createReconciliationStore();
+	return registry[SHARED_STORE_KEY];
 }
 
 /**
@@ -40,24 +66,33 @@ export interface BranchIndexLifecycle {
  * on branch creation, checkout, rename, deletion, and commit. An unchanged
  * fingerprint costs one `git branch` call and no TokenSave process.
  */
-export function createBranchIndexLifecycle(): BranchIndexLifecycle {
-	const fingerprints = new Map<string, string>();
-	const inFlight = new Map<string, Promise<BranchReconciliationResult>>();
+export function createBranchIndexLifecycle(
+	store: ReconciliationStore = createReconciliationStore(),
+): BranchIndexLifecycle {
+	const { fingerprints, inFlight } = store;
 
 	async function reconcileOnce(
 		pi: GitExecutor,
 		projectRoot: string,
 	): Promise<BranchReconciliationResult> {
-		const refs = await pi.exec(
-			"git",
-			[
-				"branch",
-				"--no-color",
-				"--format=%(HEAD)%09%(refname)%09%(objectname)",
-				"--sort=refname",
-			],
-			{ cwd: projectRoot, timeout: GIT_TIMEOUT_MS },
-		);
+		let refs: { code: number | null; stdout: string };
+		try {
+			refs = await pi.exec(
+				"git",
+				[
+					"branch",
+					"--no-color",
+					"--format=%(HEAD)%09%(refname)%09%(objectname)",
+					"--sort=refname",
+				],
+				{ cwd: projectRoot, timeout: GIT_TIMEOUT_MS },
+			);
+		} catch {
+			// `pi.exec` throws once the session that started this run is replaced.
+			// Other sessions may be awaiting the run, so it settles instead of
+			// rejecting; the next TokenSave tool call reconciles again.
+			return { reconciled: false, warnings: [] };
+		}
 		if (refs.code !== 0) {
 			return { reconciled: false, warnings: [] };
 		}
@@ -106,10 +141,6 @@ export function createBranchIndexLifecycle(): BranchIndexLifecycle {
 	}
 
 	return {
-		reset() {
-			fingerprints.clear();
-			inFlight.clear();
-		},
 		async reconcile(pi, projectRoot) {
 			const pending = inFlight.get(projectRoot);
 			if (pending) return pending;

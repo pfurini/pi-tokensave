@@ -352,6 +352,45 @@ test("autoManageBranches starts reconciling at session start without blocking it
   }
 });
 
+test("a subagent session in the same process reuses the parent's branch reconciliation", async () => {
+  const fakeHome = mkdtempSync(join(tmpdir(), "pi-tokensave-home-"));
+  mkdirSync(join(fakeHome, ".pi", "agent"), { recursive: true });
+  writeFileSync(join(fakeHome, ".pi", "agent", "pi-tokensave.json"), JSON.stringify({ autoManageBranches: true }), "utf8");
+  const previousHome = process.env.HOME;
+  process.env.HOME = fakeHome;
+
+  const tokensaveCommands: string[][] = [];
+  setExecFileImplForTest((_file, args: string[], _options, cb: Cb) => {
+    if (args[0] !== "--version") tokensaveCommands.push(args);
+    cb(null, args[0] === "--version" ? "tokensave 7.12.1" : "ok", "");
+    return {};
+  });
+
+  try {
+    const refs = `*\trefs/heads/main\t${"a".repeat(40)}`;
+    const projectDir = initializedProjectDir();
+    const ctx = { cwd: projectDir, ui: { notify: () => {} } };
+
+    const parent = fakePi();
+    parent.exec = async () => ({ code: 0, stdout: refs, stderr: "", killed: false });
+    pluginTokensave(parent);
+    await parent.handlers.session_start({}, ctx);
+    await parent.handlers.tool_call({ toolName: "tokensave_status", input: {} }, ctx);
+    assert.equal(tokensaveCommands.length, 3, "the parent reconciles once");
+
+    // pi-subagents loads a fresh copy of the extension for each child session.
+    const child = fakePi();
+    child.exec = async () => ({ code: 0, stdout: refs, stderr: "", killed: false });
+    pluginTokensave(child);
+    await child.handlers.session_start({}, ctx);
+    await child.handlers.tool_call({ toolName: "tokensave_status", input: {} }, ctx);
+    assert.equal(tokensaveCommands.length, 3, "the child starts no TokenSave command");
+  } finally {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+  }
+});
+
 test("a session with its own agentDir reads settings and installs rules there, not under HOME", async () => {
   const fakeHome = mkdtempSync(join(tmpdir(), "pi-tokensave-home-"));
   const agentDir = mkdtempSync(join(tmpdir(), "pi-tokensave-agentdir-"));

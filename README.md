@@ -130,6 +130,12 @@ tips changed since the last run. Unchanged refs cost one `git branch` call and n
 TokenSave process. When another process already holds TokenSave's sync lock, the
 extension skips the step silently and retries at the next TokenSave tool call.
 
+Every session in one Pi process shares the reconciliation state, keyed by project
+root. A pi-subagents child therefore finds the work its parent already did, or waits
+for the parent's run in progress, instead of repeating `branch add`, `sync`, and
+`branch gc`. A child that runs in its own git worktree has a different root, so it
+reconciles that worktree.
+
 This automation runs only while Pi is active. Git changes made elsewhere are
 reconciled when the next Pi session starts or TokenSave tool runs. Uncommitted edits
 are not synced; run `/tokensave-sync` for those.
